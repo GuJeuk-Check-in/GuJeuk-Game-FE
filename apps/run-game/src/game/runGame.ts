@@ -1,0 +1,431 @@
+export function initGame(canvas: HTMLCanvasElement): () => void {
+  const ctx = canvas.getContext('2d')!
+
+  const COLORS = ['#1fa97a', '#e26d3f', '#3a8bd6', '#e0a02a']
+  const COLORS_DARK = ['#147a57', '#b04e26', '#27628f', '#a8741a']
+  const NDASH = 7
+
+  let W = 0, H = 0, dpr = 1, horizonY = 0, nearY = 0
+  let state = 'menu'
+  let playerCount = 1
+  let lanes: ReturnType<typeof makeLane>[] = []
+  let elapsed = 0
+  let bestSolo = 0
+  let uiButtons: { x: number; y: number; w: number; h: number; action: string; data?: number }[] = []
+
+  let actx: AudioContext | null = null
+  function initAudio() {
+    if (!actx) {
+      try { actx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)() } catch (_) {}
+    }
+  }
+  function blip(freq: number, dur: number, type: OscillatorType = 'square') {
+    if (!actx) return
+    try {
+      const o = actx.createOscillator(), g = actx.createGain()
+      o.type = type; o.frequency.value = freq
+      g.gain.setValueAtTime(0.06, actx.currentTime)
+      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur)
+      o.connect(g); g.connect(actx.destination)
+      o.start(); o.stop(actx.currentTime + dur)
+    } catch (_) {}
+  }
+  const sJump = () => blip(520, 0.12, 'square')
+  const sCoin = () => blip(880, 0.14, 'triangle')
+  const sHit = () => blip(150, 0.25, 'sawtooth')
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2)
+    W = window.innerWidth; H = window.innerHeight
+    canvas.width = Math.floor(W * dpr); canvas.height = Math.floor(H * dpr)
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px'
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    horizonY = H * 0.17; nearY = H * 0.76
+    for (const l of lanes) {
+      const lw = W / playerCount
+      l.x = l.idx * lw; l.w = lw; l.center = l.x + lw / 2
+      l.charSize = Math.min(lw * 0.34, H * 0.12)
+    }
+  }
+
+  function proj(z: number) {
+    const p = 1 - Math.max(0, Math.min(1, z))
+    const e = Math.pow(p, 1.7)
+    return { y: horizonY + (nearY - horizonY) * e, scale: 0.10 + 0.90 * e }
+  }
+
+  type Lane = {
+    idx: number; x: number; w: number; center: number; charSize: number
+    jumpOffset: number; vy: number; onGround: boolean
+    hearts: number; score: number; alive: boolean; invuln: number
+    obstacles: { z: number; resolved: boolean; type: string }[]
+    coins: { z: number; resolved: boolean; got?: boolean }[]
+    spawnT: number; coinT: number; roadPhase: number; phase: number
+    blink: number; blinkT: number
+    cloud: { x: number; y: number; w: number; s: number }
+  }
+
+  function makeLane(i: number, n: number): Lane {
+    const lw = W / n
+    return {
+      idx: i, x: i * lw, w: lw, center: i * lw + lw / 2,
+      charSize: Math.min(lw * 0.34, H * 0.12),
+      jumpOffset: 0, vy: 0, onGround: true,
+      hearts: 3, score: 0, alive: true, invuln: 0,
+      obstacles: [], coins: [],
+      spawnT: 1.5 + Math.random() * 0.6, coinT: 3 + Math.random() * 2.5,
+      roadPhase: Math.random(), phase: Math.random() * 6,
+      blink: 0, blinkT: 1 + Math.random() * 3,
+      cloud: { x: Math.random() * lw, y: H * 0.08, w: lw * 0.3, s: H * 0.012 },
+    }
+  }
+
+  function startGame(n: number) {
+    playerCount = n; elapsed = 0; lanes = []
+    for (let i = 0; i < n; i++) lanes.push(makeLane(i, n))
+    resize()
+    state = 'playing'
+  }
+
+  function jump(li: number) {
+    const l = lanes[li]
+    if (l && l.alive && l.onGround) { l.vy = 8 * l.charSize; l.onGround = false; sJump() }
+  }
+
+  function update(dt: number) {
+    if (state !== 'playing') return
+    elapsed += dt
+    const zspeed = 0.42 + Math.min(elapsed * 0.006, 0.42)
+    let anyAlive = false
+
+    for (const l of lanes) {
+      l.cloud.x -= l.cloud.s * dt
+      if (l.cloud.x < -l.cloud.w) l.cloud.x = l.w + Math.random() * l.w * 0.3
+      l.roadPhase = (l.roadPhase + zspeed * dt) % 1
+      if (!l.alive) continue
+      anyAlive = true
+
+      const g = 23 * l.charSize
+      l.vy -= g * dt; l.jumpOffset += l.vy * dt
+      if (l.jumpOffset <= 0) { l.jumpOffset = 0; l.vy = 0; l.onGround = true }
+      l.invuln = Math.max(0, l.invuln - dt)
+      l.blinkT -= dt; if (l.blinkT <= 0) { l.blink = 0.12; l.blinkT = 1.5 + Math.random() * 3 }
+      l.blink = Math.max(0, l.blink - dt)
+
+      l.spawnT -= dt
+      if (l.spawnT <= 0) {
+        l.obstacles.push({ z: 1, resolved: false, type: Math.random() < 0.5 ? 'cactus' : 'rock' })
+        l.spawnT = Math.max(0.9, 1.7 - elapsed * 0.02) + Math.random() * 0.7
+      }
+      l.coinT -= dt
+      if (l.coinT <= 0) { l.coins.push({ z: 1, resolved: false }); l.coinT = 3 + Math.random() * 3 }
+
+      for (const o of l.obstacles) o.z -= zspeed * dt
+      for (const c of l.coins) c.z -= zspeed * dt
+
+      const airborne = !l.onGround
+      for (const o of l.obstacles) {
+        if (!o.resolved && o.z <= 0.05) {
+          o.resolved = true
+          if (!airborne && l.invuln <= 0) {
+            l.hearts--; l.invuln = 1.1; sHit()
+            if (l.hearts <= 0) l.alive = false
+          }
+        }
+      }
+      for (const c of l.coins) {
+        if (!c.resolved && c.z <= 0.05) {
+          c.resolved = true
+          if (airborne) { c.got = true; l.score += 50; sCoin() }
+        }
+      }
+      l.obstacles = l.obstacles.filter(o => o.z > -0.15)
+      l.coins = l.coins.filter(c => !c.got && c.z > -0.15)
+      l.score += dt * 8
+    }
+    if (!anyAlive) gameOver()
+  }
+
+  function gameOver() {
+    state = 'over'
+    if (playerCount === 1) bestSolo = Math.max(bestSolo, Math.floor(lanes[0].score))
+  }
+
+  function roundRect(x: number, y: number, w: number, h: number, r: number) {
+    r = Math.min(r, w / 2, h / 2)
+    ctx.beginPath()
+    ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r)
+    ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r)
+    ctx.arcTo(x, y, x + w, y, r); ctx.closePath()
+  }
+
+  function drawLaneScene(l: Lane) {
+    ctx.save()
+    ctx.beginPath(); ctx.rect(l.x, 0, l.w, H); ctx.clip()
+
+    const sg = ctx.createLinearGradient(0, 0, 0, horizonY)
+    sg.addColorStop(0, '#9fdcff'); sg.addColorStop(1, '#dff4ff')
+    ctx.fillStyle = sg; ctx.fillRect(l.x, 0, l.w, horizonY)
+    ctx.fillStyle = '#ffe27a'
+    ctx.beginPath(); ctx.arc(l.x + l.w * 0.82, H * 0.085, l.charSize * 0.5, 0, 7); ctx.fill()
+    ctx.fillStyle = 'rgba(255,255,255,0.92)'
+    const c = l.cloud
+    ctx.beginPath()
+    ctx.arc(l.x + c.x, c.y, c.w * 0.26, 0, 7)
+    ctx.arc(l.x + c.x + c.w * 0.26, c.y - c.w * 0.05, c.w * 0.2, 0, 7)
+    ctx.arc(l.x + c.x - c.w * 0.24, c.y + c.w * 0.02, c.w * 0.18, 0, 7)
+    ctx.fill()
+
+    ctx.fillStyle = '#86cf57'; ctx.fillRect(l.x, horizonY, l.w, H - horizonY)
+
+    const topHW = l.w * 0.05, botHW = l.w * 0.36, cx = l.center
+    ctx.fillStyle = '#e3cf95'
+    ctx.beginPath()
+    ctx.moveTo(cx - topHW, horizonY); ctx.lineTo(cx + topHW, horizonY)
+    ctx.lineTo(cx + botHW, H); ctx.lineTo(cx - botHW, H); ctx.closePath(); ctx.fill()
+    ctx.strokeStyle = '#cdb678'; ctx.lineWidth = Math.max(2, l.w * 0.01)
+    ctx.beginPath(); ctx.moveTo(cx - topHW, horizonY); ctx.lineTo(cx - botHW, H)
+    ctx.moveTo(cx + topHW, horizonY); ctx.lineTo(cx + botHW, H); ctx.stroke()
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'
+    for (let k = 0; k < NDASH; k++) {
+      const z = 1 - (((k / NDASH) + l.roadPhase) % 1)
+      const pr = proj(z), w = Math.max(2, (botHW * 0.12) * pr.scale), hgt = Math.max(3, (H * 0.05) * pr.scale)
+      ctx.fillRect(cx - w / 2, pr.y - hgt, w, hgt)
+    }
+
+    const items: { z: number; kind: string; o: typeof l.obstacles[0] | typeof l.coins[0] }[] = []
+    for (const o of l.obstacles) items.push({ z: o.z, kind: 'ob', o })
+    for (const cc of l.coins) items.push({ z: cc.z, kind: 'coin', o: cc })
+    items.sort((a, b) => b.z - a.z)
+    for (const it of items) {
+      const pr = proj(it.z)
+      if (it.kind === 'ob') drawObstacle(l, it.o as typeof l.obstacles[0], cx, pr)
+      else drawCoin(l, cx, pr)
+    }
+
+    drawChar(l, cx)
+    drawLaneUI(l)
+    ctx.restore()
+  }
+
+  function drawObstacle(l: Lane, o: { type: string }, cx: number, pr: { y: number; scale: number }) {
+    const s = l.charSize * 0.95 * pr.scale, y = pr.y
+    if (o.type === 'cactus') {
+      ctx.fillStyle = '#3aa55a'
+      roundRect(cx - s * 0.3, y - s, s * 0.6, s, s * 0.2); ctx.fill()
+      roundRect(cx - s * 0.62, y - s * 0.7, s * 0.32, s * 0.45, s * 0.12); ctx.fill()
+      roundRect(cx + s * 0.3, y - s * 0.8, s * 0.32, s * 0.5, s * 0.12); ctx.fill()
+    } else {
+      ctx.fillStyle = '#9a958c'
+      roundRect(cx - s * 0.45, y - s * 0.7, s * 0.9, s * 0.7, s * 0.3); ctx.fill()
+    }
+  }
+
+  function drawCoin(l: Lane, cx: number, pr: { y: number; scale: number }) {
+    const s = l.charSize * 0.55 * pr.scale
+    const cy = pr.y - l.charSize * 1.05 * pr.scale
+    ctx.fillStyle = '#f4b400'; ctx.beginPath(); ctx.arc(cx, cy, s, 0, 7); ctx.fill()
+    ctx.fillStyle = '#ffd84d'; ctx.beginPath(); ctx.arc(cx, cy, s * 0.62, 0, 7); ctx.fill()
+  }
+
+  function drawChar(l: Lane, cx: number) {
+    const baseY = nearY - l.jumpOffset, s = l.charSize, t = performance.now()
+    ctx.fillStyle = 'rgba(0,0,0,0.13)'
+    ctx.beginPath()
+    ctx.ellipse(cx, nearY + s * 0.06, s * 0.4 * (l.onGround ? 1 : 0.55), s * 0.11, 0, 0, 7); ctx.fill()
+
+    const flashing = l.invuln > 0 && Math.floor(l.invuln * 12) % 2 === 0
+    let sx = 1, sy = 1
+    if (!l.alive) { sx = 1.06; sy = 0.94 }
+    else if (!l.onGround) { sy = 1.1; sx = 0.92 }
+    else { const bob = Math.sin(t / 110 + l.phase); sy = 1 + bob * 0.05; sx = 1 - bob * 0.05 }
+    const bw = s * 0.9 * sx, bh = s * sy, top = baseY - bh
+
+    if (l.alive) {
+      const lp = l.onGround ? Math.sin(t / 80 + l.phase) * s * 0.13 : 0
+      ctx.fillStyle = COLORS_DARK[l.idx]
+      roundRect(cx - bw * 0.24, baseY - s * 0.16 + lp, s * 0.2, s * 0.22, s * 0.08); ctx.fill()
+      roundRect(cx + bw * 0.04, baseY - s * 0.16 - lp, s * 0.2, s * 0.22, s * 0.08); ctx.fill()
+    }
+    ctx.fillStyle = flashing ? '#ffffff' : COLORS[l.idx]
+    roundRect(cx - bw / 2, top, bw, bh, bw * 0.42); ctx.fill()
+
+    const eyeY = top + bh * 0.4, er = s * 0.11
+    if (l.alive && l.blink <= 0) {
+      ctx.fillStyle = '#fff'; ctx.beginPath()
+      ctx.arc(cx - bw * 0.18, eyeY, er, 0, 7); ctx.arc(cx + bw * 0.18, eyeY, er, 0, 7); ctx.fill()
+      ctx.fillStyle = '#2a2a2a'; ctx.beginPath()
+      ctx.arc(cx - bw * 0.15, eyeY, er * 0.5, 0, 7); ctx.arc(cx + bw * 0.21, eyeY, er * 0.5, 0, 7); ctx.fill()
+    } else {
+      ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = s * 0.045; ctx.lineCap = 'round'
+      if (!l.alive) {
+        const d = er * 0.7
+        ctx.beginPath()
+        ctx.moveTo(cx - bw * 0.18 - d, eyeY - d); ctx.lineTo(cx - bw * 0.18 + d, eyeY + d)
+        ctx.moveTo(cx - bw * 0.18 + d, eyeY - d); ctx.lineTo(cx - bw * 0.18 - d, eyeY + d)
+        ctx.moveTo(cx + bw * 0.18 - d, eyeY - d); ctx.lineTo(cx + bw * 0.18 + d, eyeY + d)
+        ctx.moveTo(cx + bw * 0.18 + d, eyeY - d); ctx.lineTo(cx + bw * 0.18 - d, eyeY + d)
+        ctx.stroke()
+      } else {
+        ctx.beginPath()
+        ctx.moveTo(cx - bw * 0.26, eyeY); ctx.lineTo(cx - bw * 0.1, eyeY)
+        ctx.moveTo(cx + bw * 0.1, eyeY); ctx.lineTo(cx + bw * 0.26, eyeY); ctx.stroke()
+      }
+    }
+    ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = s * 0.045; ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.arc(cx, top + bh * 0.6, s * 0.14, l.alive ? 0.1 * Math.PI : 1.1 * Math.PI, l.alive ? 0.9 * Math.PI : 1.9 * Math.PI)
+    ctx.stroke()
+  }
+
+  function drawLaneUI(l: Lane) {
+    const cx = l.center
+    ctx.fillStyle = '#ffffff'; ctx.strokeStyle = 'rgba(0,0,0,0.18)'
+    ctx.lineWidth = Math.max(2, H * 0.006)
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.font = Math.floor(H * 0.065) + 'px Jua, sans-serif'
+    const sc = String(Math.floor(l.score))
+    ctx.strokeText(sc, cx, H * 0.075); ctx.fillText(sc, cx, H * 0.075)
+
+    ctx.font = Math.floor(H * 0.04) + 'px sans-serif'; ctx.textAlign = 'left'
+    const hx = l.x + l.w * 0.06, hy = H * 0.04
+    for (let k = 0; k < 3; k++) {
+      ctx.fillStyle = k < l.hearts ? '#e5484d' : 'rgba(0,0,0,0.18)'
+      ctx.fillText('♥', hx + k * H * 0.045, hy)
+    }
+    if (playerCount > 1) {
+      ctx.fillStyle = COLORS_DARK[l.idx]; ctx.textAlign = 'right'
+      ctx.font = Math.floor(H * 0.038) + 'px Jua, sans-serif'
+      ctx.fillText((l.idx + 1) + 'P', l.x + l.w * 0.94, hy)
+    }
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+  }
+
+  function drawDividers() {
+    if (playerCount < 2) return
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = Math.max(3, W * 0.004)
+    ctx.setLineDash([12, 10])
+    for (let i = 1; i < playerCount; i++) {
+      const x = i * (W / playerCount)
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke()
+    }
+    ctx.setLineDash([])
+  }
+
+  function button(x: number, y: number, w: number, h: number, label: string, color: string, action: string, data?: number) {
+    roundRect(x, y, w, h, h * 0.28); ctx.fillStyle = color; ctx.fill()
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.font = Math.floor(h * 0.42) + 'px Jua, sans-serif'
+    ctx.fillText(label, x + w / 2, y + h / 2)
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+    uiButtons.push({ x, y, w, h, action, data })
+  }
+
+  function drawMenu() {
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, 0, W, H)
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    const bob = Math.sin(performance.now() / 300) * H * 0.012
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = H * 0.008
+    ctx.font = Math.floor(H * 0.13) + 'px Jua, sans-serif'
+    ctx.strokeText('달려라!', W / 2, H * 0.2 + bob); ctx.fillText('달려라!', W / 2, H * 0.2 + bob)
+    ctx.font = Math.floor(H * 0.045) + 'px Jua, sans-serif'; ctx.fillStyle = '#fff'
+    ctx.fillText('탭하면 콩 점프!', W / 2, H * 0.31)
+    ctx.fillText('몇 명이 할까?', W / 2, H * 0.42)
+
+    uiButtons = []
+    const labels = ['혼자', '2명', '3명', '4명']
+    const bw = Math.min(W * 0.2, H * 0.22), bh = bw * 0.7, gap = W * 0.025
+    const totalW = bw * 4 + gap * 3; let bx = (W - totalW) / 2; const by = H * 0.52
+    for (let i = 0; i < 4; i++) { button(bx, by, bw, bh, labels[i], COLORS[i], 'start', i + 1); bx += bw + gap }
+
+    ctx.fillStyle = '#fff'; ctx.font = Math.floor(H * 0.04) + 'px Jua, sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText('🏆 혼자 최고 점수: ' + bestSolo, W / 2, H * 0.74)
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.font = Math.floor(H * 0.028) + 'px Jua, sans-serif'
+    ctx.fillText('(PC 테스트: 스페이스 / 숫자 1~4 키로도 점프)', W / 2, H * 0.82)
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+  }
+
+  function drawOver() {
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, W, H)
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#fff'; ctx.font = Math.floor(H * 0.1) + 'px Jua, sans-serif'
+    ctx.fillText('결과!', W / 2, H * 0.16)
+    const scores = lanes.map(l => ({ i: l.idx, s: Math.floor(l.score), c: COLORS[l.idx] }))
+    const best = Math.max(...scores.map(o => o.s))
+    ctx.font = Math.floor(H * 0.05) + 'px Jua, sans-serif'
+    scores.forEach((o, k) => {
+      const y = H * 0.3 + k * H * 0.08; ctx.fillStyle = o.c
+      ctx.fillText((playerCount > 1 ? (o.i + 1) + 'P : ' : '') + o.s + '점' + (o.s === best && playerCount > 1 ? '  🏅' : ''), W / 2, y)
+    })
+    if (playerCount === 1) {
+      ctx.fillStyle = '#ffd84d'; ctx.font = Math.floor(H * 0.04) + 'px Jua, sans-serif'
+      ctx.fillText('🏆 최고 점수: ' + bestSolo, W / 2, H * 0.4)
+    }
+    uiButtons = []
+    const bw = Math.min(W * 0.3, H * 0.32), bh = bw * 0.4, gap = W * 0.03
+    const totalW = bw * 2 + gap; let bx = (W - totalW) / 2; const by = H * 0.68
+    button(bx, by, bw, bh, '또 하기 ▶', '#1fa97a', 'again'); bx += bw + gap
+    button(bx, by, bw, bh, '처음으로', '#3a8bd6', 'menu')
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+  }
+
+  let last = performance.now()
+  let animId: number
+
+  function loop(now: number) {
+    let dt = (now - last) / 1000; last = now; if (dt > 0.05) dt = 0.05
+    update(dt)
+    ctx.clearRect(0, 0, W, H)
+    if (lanes.length) { for (const l of lanes) drawLaneScene(l); drawDividers() }
+    else { ctx.fillStyle = '#bfe9ff'; ctx.fillRect(0, 0, W, H) }
+    if (state === 'menu') drawMenu()
+    else if (state === 'over') drawOver()
+    animId = requestAnimationFrame(loop)
+  }
+
+  function laneAt(x: number) { return Math.max(0, Math.min(playerCount - 1, Math.floor(x / (W / playerCount)))) }
+
+  function hitUI(x: number, y: number) {
+    for (const b of uiButtons) {
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+        if (b.action === 'start') startGame(b.data!)
+        else if (b.action === 'again') startGame(playerCount)
+        else if (b.action === 'menu') state = 'menu'
+        return true
+      }
+    }
+    return false
+  }
+
+  const handlePointerDown = (e: PointerEvent) => {
+    e.preventDefault(); initAudio()
+    const r = canvas.getBoundingClientRect()
+    const x = e.clientX - r.left, y = e.clientY - r.top
+    if (state === 'playing') jump(laneAt(x))
+    else hitUI(x, y)
+  }
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (state === 'playing') {
+      if (e.code === 'Space') { e.preventDefault(); jump(0) }
+      else if (e.code.startsWith('Digit')) {
+        const n = parseInt(e.code.slice(5)) - 1
+        if (n >= 0 && n < playerCount) jump(n)
+      }
+    }
+  }
+
+  canvas.addEventListener('pointerdown', handlePointerDown, { passive: false })
+  window.addEventListener('keydown', handleKeyDown)
+  window.addEventListener('resize', resize)
+
+  resize()
+  animId = requestAnimationFrame(loop)
+
+  return () => {
+    cancelAnimationFrame(animId)
+    canvas.removeEventListener('pointerdown', handlePointerDown)
+    window.removeEventListener('keydown', handleKeyDown)
+    window.removeEventListener('resize', resize)
+  }
+}

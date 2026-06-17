@@ -1,0 +1,6 @@
+{
+  "installCommand": "cd ../.. && yarn install --immutable",
+  "buildCommand": "cd ../.. && yarn turbo build --filter=@gujuck/pet-game",
+  "outputDirectory": "dist",
+  "framework": null
+}

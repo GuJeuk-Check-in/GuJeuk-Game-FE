@@ -1,0 +1,11 @@
+node_modules
+dist
+.turbo
+.env
+.env.local
+*.log
+*.tsbuildinfo
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
