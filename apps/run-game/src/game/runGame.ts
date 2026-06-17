@@ -5,7 +5,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
   const CHAR_COLORS = ['#FF8FAB', '#74C7EC', '#F9E2AF', '#A6E3A1']
   const CHAR_SHADOW = ['#E8507A', '#4BA6D4', '#D4A520', '#4CAF50']
   const LS_KEY = 'gujuck_run_best'
-  const NDASH = 7
+  const NDASH = 9
 
   // ── State ─────────────────────────────────────────────────────────────────
   let W = 0, H = 0, dpr = 1, horizonY = 0, nearY = 0
@@ -48,36 +48,27 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
   type Cloud     = { x: number; y: number; w: number; s: number; puffs: number[] }
   type TrailDot  = { x: number; y: number; life: number; maxLife: number; r: number }
 
-  // obstacle pattern determines movement/timing mechanic:
-  // static  = normal, jump over
-  // bounce  = height oscillates; safe to run under when high, jump over when low
-  // rush    = accelerates suddenly at mid-range (reaction test)
-  // stealth = invisible until close (reflex test)
   type ObstaclePattern = 'static' | 'bounce' | 'rush' | 'stealth'
   type ObstacleKind    = 'mushroom' | 'crystal' | 'spike' | 'doubleMush' | 'bat' | 'pumpkin'
 
   type Obstacle = {
     z: number; resolved: boolean
     kind: ObstacleKind; pattern: ObstaclePattern
-    // lateral: -1 = left third, 0 = center, +1 = right third of lane
-    xSlot: number
-    // bounce state
-    bouncePhase: number; bounceSpeed: number
-    bounceH: number   // computed height above ground (in pixels ÷ charSize)
-    // rush state
+    xSlot: number       // -1 | 0 | 1
+    bouncePhase: number; bounceSpeed: number; bounceH: number
     speedMul: number; rushed: boolean
-    // stealth state
     alpha: number
   }
 
+  // Side scenery objects alongside the road
+  type SideKind = 'tree' | 'mushTree' | 'crystal' | 'flower' | 'lamp' | 'bush'
+  type SideObj  = { z: number; side: -1 | 1; kind: SideKind; sz: number }
+
   type Lane = {
     idx: number; x: number; w: number; center: number; charSize: number
-    // vertical jump
     jumpOffset: number; vy: number; onGround: boolean
     canDoubleJump: boolean; jumpCount: number; wasGrounded: boolean
-    // lateral dodge
     xSlot: number; targetXSlot: number; dodgeTimer: number; xSmooth: number
-    // status
     hearts: number; score: number; alive: boolean; invuln: number
     sqX: number; sqY: number
     obstacles: Obstacle[]; stars: Star[]
@@ -86,6 +77,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     spawnT: number; starT: number; roadPhase: number; phase: number
     blink: number; blinkT: number
     clouds: Cloud[]; mtFarPhase: number; mtNearPhase: number
+    sideObjs: SideObj[]; sideT: number
   }
 
   // ── Lane factory ──────────────────────────────────────────────────────────
@@ -94,6 +86,14 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     const clouds: Cloud[] = []
     for (let k = 0; k < 3; k++)
       clouds.push({ x: Math.random() * lw, y: H * (0.05 + Math.random() * 0.10), w: lw * (0.18 + Math.random() * 0.16), s: H * (0.008 + Math.random() * 0.008), puffs: [0, Math.random() * 0.3 + 0.2, -(Math.random() * 0.3 + 0.2)] })
+    // Pre-populate sides so they're not empty at game start
+    const sideObjs: SideObj[] = []
+    const kinds: SideKind[] = ['tree', 'mushTree', 'crystal', 'flower', 'lamp', 'bush']
+    for (let k = 0; k < 8; k++) {
+      const z = 0.15 + k * 0.11
+      sideObjs.push({ z, side: -1, kind: kinds[Math.floor(Math.random() * kinds.length)], sz: 0.55 + Math.random() * 0.55 })
+      sideObjs.push({ z: z + 0.05, side: 1, kind: kinds[Math.floor(Math.random() * kinds.length)], sz: 0.55 + Math.random() * 0.55 })
+    }
     return {
       idx: i, x: i * lw, w: lw, center: i * lw + lw / 2,
       charSize: Math.min(lw * 0.34, H * 0.12),
@@ -108,6 +108,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       roadPhase: Math.random(), phase: Math.random() * 6,
       blink: 0, blinkT: 1.5 + Math.random() * 3,
       clouds, mtFarPhase: Math.random(), mtNearPhase: Math.random(),
+      sideObjs, sideT: 0.5 + Math.random() * 0.4,
     }
   }
 
@@ -126,10 +127,28 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     }
   }
 
+  // Standard perspective projection (z: 0=near, 1=horizon)
   function proj(z: number) {
     const p = 1 - Math.max(0, Math.min(1, z))
     const e = Math.pow(p, 1.7)
     return { y: horizonY + (nearY - horizonY) * e, scale: 0.10 + 0.90 * e }
+  }
+
+  // Extended projection: handles z<0 so obstacles zoom under the player
+  function projFull(z: number): { y: number; scale: number; alpha: number } {
+    if (z >= 0) return { ...proj(z), alpha: 1 }
+    const t = -z  // 0..0.3 past the player
+    return {
+      y:     nearY + (H - nearY) * Math.min(1, t * 3.8),  // rushes to bottom
+      scale: 1.0 + t * 5.5,                                 // grows rapidly
+      alpha: Math.max(0, 1 - t * 4.5),                      // fades out
+    }
+  }
+
+  // Road half-width at a given projected y (for side-object x placement)
+  function roadHWatY(l: Lane, y: number): number {
+    const t = (y - horizonY) / (nearY - horizonY)
+    return l.w * (0.05 + 0.31 * Math.max(0, Math.min(1, t)))
   }
 
   function lerpColor(c1: string, c2: string, t: number): string {
@@ -161,22 +180,26 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     l.floatTexts.push({ x, y, vy: -90, life: 0.9, maxLife: 0.9, text, color, size })
   }
 
-  // lateral pixel offset for a given xSlot and lane
   function xSlotPx(l: Lane, slot: number, scale = 1) { return slot * l.w * 0.22 * scale }
+
+  // Minimum jumpOffset (in charSize units) to visually clear this obstacle
+  function clearanceH(o: Obstacle): number {
+    switch (o.kind) {
+      case 'mushroom':   return 0.92
+      case 'crystal':    return 1.08
+      case 'spike':      return 0.86
+      case 'doubleMush': return 0.80
+      default:           return 0.92
+    }
+  }
 
   // ── Obstacle factory ──────────────────────────────────────────────────────
   function makeObstacle(kind: ObstacleKind, z: number): Obstacle {
-    // pattern assignment
     let pattern: ObstaclePattern = 'static'
-    if (kind === 'bat' || kind === 'pumpkin') {
-      pattern = 'bounce'
-    } else if (elapsed > 22 && kind === 'crystal' && Math.random() < 0.40) {
-      pattern = 'stealth'
-    } else if (elapsed > 18 && (kind === 'spike' || kind === 'mushroom') && Math.random() < 0.30) {
-      pattern = 'rush'
-    }
+    if (kind === 'bat' || kind === 'pumpkin') pattern = 'bounce'
+    else if (elapsed > 22 && kind === 'crystal'  && Math.random() < 0.40) pattern = 'stealth'
+    else if (elapsed > 18 && (kind === 'spike' || kind === 'mushroom') && Math.random() < 0.30) pattern = 'rush'
 
-    // lateral slot: mostly center early, sides open up later
     let xSlot = 0
     if (elapsed > 28 && playerCount === 1) {
       const r = Math.random()
@@ -218,7 +241,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
 
   function doDodge(li: number, dir: -1 | 1) {
     const l = lanes[li]; if (!l || !l.alive) return
-    const next = l.targetXSlot === 0 ? dir : 0   // toggle back to center if already dodging
+    const next = l.targetXSlot === 0 ? dir : 0
     l.targetXSlot = next; l.dodgeTimer = 0.65; sDodge()
     spawnParticles(l, l.center + xSlotPx(l, l.xSmooth), nearY - l.jumpOffset - l.charSize * 0.5, 5, dir < 0 ? ['#74C7EC', '#fff'] : ['#F9E2AF', '#fff'], 0.7, 400)
   }
@@ -242,6 +265,17 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       for (const c of l.clouds) { c.x -= c.s * dt; if (c.x + c.w < 0) c.x = l.w + Math.random() * l.w * 0.4 }
       l.roadPhase = (l.roadPhase + speed * dt) % 1
 
+      // ── side scenery ─────────────────────────────────────────────────────
+      for (const s of l.sideObjs) s.z -= speed * dt
+      l.sideObjs = l.sideObjs.filter(s => s.z > -0.38)
+      l.sideT -= dt
+      if (l.sideT <= 0) {
+        const kinds: SideKind[] = ['tree', 'mushTree', 'crystal', 'flower', 'lamp', 'bush', 'tree', 'bush']
+        l.sideObjs.push({ z: 1, side: -1, kind: kinds[Math.floor(Math.random() * kinds.length)], sz: 0.6 + Math.random() * 0.5 })
+        l.sideObjs.push({ z: 1 + Math.random() * 0.06, side: 1, kind: kinds[Math.floor(Math.random() * kinds.length)], sz: 0.6 + Math.random() * 0.5 })
+        l.sideT = 0.45 + Math.random() * 0.5
+      }
+
       if (!l.alive) continue
       anyAlive = true
 
@@ -258,13 +292,8 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       l.wasGrounded = l.onGround
 
       // ── lateral smooth
-      if (l.dodgeTimer > 0) {
-        l.dodgeTimer -= dt
-        if (l.dodgeTimer <= 0) { l.targetXSlot = 0 }
-      }
+      if (l.dodgeTimer > 0) { l.dodgeTimer -= dt; if (l.dodgeTimer <= 0) l.targetXSlot = 0 }
       l.xSmooth += (l.targetXSlot - l.xSmooth) * Math.min(1, dt * 14)
-
-      // ── squash/stretch spring
       l.sqX += (1 - l.sqX) * Math.min(1, dt * 14)
       l.sqY += (1 - l.sqY) * Math.min(1, dt * 14)
 
@@ -276,25 +305,19 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       // ── obstacle spawn
       l.spawnT -= dt
       if (l.spawnT <= 0) {
-        // kind pool weighted by elapsed
         const pool: ObstacleKind[] = elapsed < 12
           ? ['mushroom', 'mushroom', 'spike']
           : elapsed < 30
             ? ['mushroom', 'crystal', 'spike', 'bat', 'pumpkin']
             : ['mushroom', 'crystal', 'spike', 'doubleMush', 'bat', 'pumpkin', 'pumpkin']
-        const kind = pool[Math.floor(Math.random() * pool.length)]
-        l.obstacles.push(makeObstacle(kind, 1.0))
-
-        // cluster: occasional 2nd obstacle close behind
+        l.obstacles.push(makeObstacle(pool[Math.floor(Math.random() * pool.length)], 1.0))
         if (elapsed > 18 && Math.random() < 0.28) {
-          const pool2: ObstacleKind[] = ['mushroom', 'crystal', 'spike']
-          l.obstacles.push(makeObstacle(pool2[Math.floor(Math.random() * pool2.length)], 1.22))
+          const p2: ObstacleKind[] = ['mushroom', 'crystal', 'spike']
+          l.obstacles.push(makeObstacle(p2[Math.floor(Math.random() * p2.length)], 1.22))
         }
-
         l.spawnT = Math.max(0.55, 1.5 - elapsed * 0.017) + Math.random() * 0.6
       }
 
-      // ── star spawn
       l.starT -= dt
       if (l.starT <= 0) {
         const r = Math.random()
@@ -302,26 +325,20 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
         l.starT = 2.4 + Math.random() * 2.4
       }
 
-      // ── update obstacles (pattern logic)
+      // ── update obstacles
       for (const o of l.obstacles) {
         if (o.pattern === 'bounce') {
           o.bouncePhase += o.bounceSpeed * dt
-          // bat: swoops 0 ↔ 1.6·charSize (run-under when high, jump-over when low)
-          // pumpkin: bounces 0 ↔ 1.3·charSize (same principle)
-          if (o.kind === 'bat') {
-            o.bounceH = 0.8 * (1 + Math.sin(o.bouncePhase))   // range 0–1.6 (× charSize)
-          } else {
-            o.bounceH = 1.3 * Math.abs(Math.sin(o.bouncePhase)) // range 0–1.3 (× charSize)
-          }
+          o.bounceH = o.kind === 'bat'
+            ? 0.8 * (1 + Math.sin(o.bouncePhase))           // 0..1.6 × charSize
+            : 1.3 * Math.abs(Math.sin(o.bouncePhase))       // 0..1.3 × charSize
         } else if (o.pattern === 'rush') {
           if (!o.rushed && o.z < 0.44) { o.speedMul = 2.6; o.rushed = true }
         } else if (o.pattern === 'stealth') {
-          // invisible until z≈0.38, then flash in over 0.12 units
           o.alpha = o.z > 0.38 ? 0 : o.z < 0.26 ? 1 : (0.38 - o.z) / 0.12
         }
         o.z -= speed * o.speedMul * dt
       }
-
       for (const s of l.stars) s.z -= speed * dt
 
       // ── trail
@@ -332,48 +349,72 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       for (const t of l.trail) t.life -= dt
       l.trail = l.trail.filter(t => t.life > 0)
 
-      // ── obstacle collision
-      const charX = l.center + xSlotPx(l, l.xSmooth)
-      for (const o of l.obstacles) {
-        if (o.resolved || o.z > 0.07) continue
-        o.resolved = true
+      // ── PRECISE obstacle collision ────────────────────────────────────────
+      // Canvas y: smaller = higher on screen. nearY is ground level.
+      // charFeetY: nearY - jumpOffset (feet position)
+      // charHeadY: nearY - jumpOffset - charSize*0.88 (head position, SMALLER number)
+      // Vertical overlap exists when: charHeadY < obstBaseY && charFeetY > obstTopY
+      //   i.e. char's top is above obstacle's bottom AND char's bottom is below obstacle's top
 
-        // 1) lateral dodge check (obstacle's near-plane x vs character x)
-        const obstX = l.center + xSlotPx(l, o.xSlot, proj(0.06).scale)
-        const xDodged = Math.abs(obstX - charX) > l.charSize * 0.52
-        if (xDodged) {
-          spawnParticles(l, charX, nearY - l.jumpOffset - l.charSize * 0.8, 5, ['#74C7EC', '#fff'], 0.8, 300)
-          spawnFloatText(l, charX, nearY - l.jumpOffset - l.charSize * 1.6, 'DODGE!', '#74C7EC', Math.floor(H * 0.05))
+      const charFeetY = nearY - l.jumpOffset
+      const charHeadY = nearY - l.jumpOffset - l.charSize * 0.88
+      const charX     = l.center + xSlotPx(l, l.xSmooth)
+      const charHW    = l.charSize * l.sqX * 0.36  // half-width of character hitbox
+
+      for (const o of l.obstacles) {
+        if (o.resolved || o.z > 0.10 || o.z < -0.02) continue
+
+        // ── lateral check: precise pixel comparison ──
+        const pr     = proj(Math.max(0.001, o.z))
+        const obstX  = l.center + xSlotPx(l, o.xSlot, pr.scale)
+        const obstHW = l.charSize * pr.scale * 0.40
+        const xOverlap = Math.abs(obstX - charX) < charHW + obstHW
+
+        if (!xOverlap) {
+          // Clean lateral dodge
+          if (o.z <= 0.03) {
+            o.resolved = true
+            spawnFloatText(l, charX, nearY - l.jumpOffset - l.charSize * 1.6, 'DODGE!', '#74C7EC', Math.floor(H * 0.05))
+            spawnParticles(l, charX, nearY - l.jumpOffset - l.charSize * 0.5, 5, ['#74C7EC', '#fff'], 0.8, 300)
+          }
           continue
         }
 
-        // 2) vertical check (depends on pattern/kind)
+        // ── vertical check: pixel-accurate per obstacle kind ──
         let safe = false
+
         if (o.kind === 'bat') {
-          // bat occupies [bounceH - 0.4, bounceH + 0.4] × charSize above ground
-          const batBot = Math.max(0, (o.bounceH - 0.4) * l.charSize)
-          const batTop = (o.bounceH + 0.4) * l.charSize
-          const cBot = l.jumpOffset, cTop = l.jumpOffset + l.charSize * 0.88
-          safe = !(cBot < batTop && cTop > batBot)
-        } else if (o.pattern === 'bounce') {
-          // pumpkin: occupies [bounceH, bounceH + 1.1] × charSize
-          const pBot = o.bounceH * l.charSize
-          const pTop = pBot + l.charSize * 1.1
-          const cBot = l.jumpOffset, cTop = l.jumpOffset + l.charSize * 0.88
-          safe = !(cBot < pTop && cTop > pBot)
+          // bat center at nearY - bounceH*charSize
+          const batCY  = nearY - o.bounceH * l.charSize
+          const batHH  = l.charSize * 0.38
+          // safe if char is entirely above bat (jumped over) or entirely below (run under)
+          safe = charFeetY < (batCY - batHH) || charHeadY > (batCY + batHH)
+        } else if (o.kind === 'pumpkin') {
+          // pumpkin bottom = nearY - bounceH*charSize
+          const pBotY = nearY - o.bounceH * l.charSize
+          const pTopY = pBotY - l.charSize * 1.05
+          safe = charFeetY < pTopY || charHeadY > pBotY
         } else {
-          // normal: must be airborne
-          safe = !l.onGround
+          // Static/rush/stealth obstacles: judge by exact jump height
+          // Required: charFeetY must be ABOVE obstacle top
+          // obstTopY = pr.y - clearanceH(o) * charSize * pr.scale
+          const obstTopY = pr.y - clearanceH(o) * l.charSize * pr.scale
+          // Safe when character's feet are above obstacle's top
+          safe = charFeetY <= obstTopY
         }
 
-        if (!safe && l.invuln <= 0) {
-          l.hearts--; l.invuln = 1.2; l.combo = 0
-          sHit(); triggerShake(12, 0.28)
-          spawnParticles(l, charX, nearY - l.jumpOffset, 10, ['#FF4444', '#FF8800', '#FFD700'], 1.2, 700)
-          spawnFloatText(l, charX, nearY - l.jumpOffset - l.charSize * 1.5, '💔', '#FF4444', Math.floor(H * 0.07))
-          if (l.hearts <= 0) {
-            l.alive = false
-            spawnParticles(l, charX, nearY - l.jumpOffset, 20, [CHAR_COLORS[l.idx], '#fff', '#FFD700'], 1.5, 500)
+        // Resolve collision at the precise moment
+        if (o.z <= 0.035) {
+          o.resolved = true   // mark resolved; obstacle continues rendering as "passed under"
+          if (!safe && l.invuln <= 0) {
+            l.hearts--; l.invuln = 1.2; l.combo = 0
+            sHit(); triggerShake(12, 0.28)
+            spawnParticles(l, charX, nearY - l.jumpOffset, 10, ['#FF4444', '#FF8800', '#FFD700'], 1.2, 700)
+            spawnFloatText(l, charX, nearY - l.jumpOffset - l.charSize * 1.5, '💔', '#FF4444', Math.floor(H * 0.07))
+            if (l.hearts <= 0) {
+              l.alive = false
+              spawnParticles(l, charX, nearY - l.jumpOffset, 20, [CHAR_COLORS[l.idx], '#fff', '#FFD700'], 1.5, 500)
+            }
           }
         }
       }
@@ -390,15 +431,15 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
             const pts = 50 * mul; l.score += pts; sStar()
             const sy = nearY - l.jumpOffset - s.h * l.charSize * 1.6
             spawnParticles(l, charX, sy, 10, ['#FFD700', '#FFF', '#FFB800'], 1.2, 300)
-            const label = l.combo >= 3 ? `x${mul} 콤보!` : `+${pts}`
-            spawnFloatText(l, charX, sy - l.charSize * 0.5, label, l.combo >= 6 ? '#FF8FAB' : l.combo >= 3 ? '#FFD700' : '#fff', Math.floor(H * 0.055))
+            spawnFloatText(l, charX, sy - l.charSize * 0.5, l.combo >= 3 ? `x${mul} 콤보!` : `+${pts}`, l.combo >= 6 ? '#FF8FAB' : l.combo >= 3 ? '#FFD700' : '#fff', Math.floor(H * 0.055))
             if (l.combo > 0 && l.combo % 3 === 0) sCombo(Math.floor(l.combo / 3))
           }
         }
       }
 
-      l.obstacles = l.obstacles.filter(o => o.z > -0.2)
-      l.stars = l.stars.filter(s => !s.got && s.z > -0.2)
+      // obstacles continue to render until deeply past (zoom-under effect)
+      l.obstacles = l.obstacles.filter(o => o.z > -0.28)
+      l.stars     = l.stars.filter(s => !s.got && s.z > -0.1)
       for (const p of l.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.gravity * dt; p.life -= dt }
       l.particles = l.particles.filter(p => p.life > 0)
       for (const f of l.floatTexts) { f.y += f.vy * dt; f.life -= dt }
@@ -419,12 +460,10 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     }
   }
 
-  // ── Draw helpers ──────────────────────────────────────────────────────────
+  // ── Background ────────────────────────────────────────────────────────────
   function skyColor(t: number) {
     const p = Math.min(1, t / 120)
-    if (p < 0.5) {
-      return { top: lerpColor('#5EC8FF', '#FF9E6A', p * 2), bot: lerpColor('#C8EEFF', '#FFD4A0', p * 2) }
-    }
+    if (p < 0.5) return { top: lerpColor('#5EC8FF', '#FF9E6A', p * 2), bot: lerpColor('#C8EEFF', '#FFD4A0', p * 2) }
     const u = (p - 0.5) * 2
     return { top: lerpColor('#FF9E6A', '#1A1042', u), bot: lerpColor('#FFD4A0', '#2D2060', u) }
   }
@@ -489,29 +528,43 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     ctx.fill(); ctx.restore()
   }
 
+  // ── Road ─────────────────────────────────────────────────────────────────
   function drawRoad(l: Lane) {
-    const rp = Math.min(1, elapsed / 120)
+    const rp  = Math.min(1, elapsed / 120)
     const topHW = l.w * 0.05, botHW = l.w * 0.36, cx = l.center
+
     ctx.fillStyle = lerpColor('#e3cf95', '#706050', rp)
     ctx.beginPath()
     ctx.moveTo(cx - topHW, horizonY); ctx.lineTo(cx + topHW, horizonY)
     ctx.lineTo(cx + botHW, H); ctx.lineTo(cx - botHW, H); ctx.closePath(); ctx.fill()
 
-    // sub-lane markers (show 3 lateral slots)
-    ctx.strokeStyle = lerpColor('#cdb678', '#504030', rp); ctx.lineWidth = Math.max(1, l.w * 0.006)
-    ctx.setLineDash([6, 8])
+    // perspective ground lines (depth / "forward motion" cue)
+    for (let k = 0; k < NDASH; k++) {
+      const z = 1 - (((k / NDASH) + l.roadPhase * 0.4) % 1)
+      if (z < 0.04) continue
+      const pr = proj(z)
+      const t  = (pr.y - horizonY) / (nearY - horizonY)
+      const hw = topHW + (botHW - topHW) * t
+      ctx.strokeStyle = 'rgba(0,0,0,0.07)'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.moveTo(cx - hw, pr.y); ctx.lineTo(cx + hw, pr.y); ctx.stroke()
+    }
+
+    // sub-lane dotted dividers
+    ctx.strokeStyle = lerpColor('#cdb678', '#504030', rp); ctx.lineWidth = Math.max(1, l.w * 0.005)
+    ctx.setLineDash([5, 8])
     for (const slot of [-1, 1]) {
       const topX = cx + slot * topHW * 0.6, botX = cx + slot * botHW * 0.55
       ctx.beginPath(); ctx.moveTo(topX, horizonY); ctx.lineTo(botX, H); ctx.stroke()
     }
     ctx.setLineDash([])
 
-    // road edge lines
-    ctx.lineWidth = Math.max(2, l.w * 0.010)
+    // road edges
+    ctx.lineWidth = Math.max(2, l.w * 0.010); ctx.strokeStyle = lerpColor('#cdb678', '#504030', rp)
     ctx.beginPath()
     ctx.moveTo(cx - topHW, horizonY); ctx.lineTo(cx - botHW, H)
     ctx.moveTo(cx + topHW, horizonY); ctx.lineTo(cx + botHW, H); ctx.stroke()
 
+    // center dashes
     ctx.fillStyle = 'rgba(255,255,255,0.75)'
     for (let k = 0; k < NDASH; k++) {
       const z = 1 - (((k / NDASH) + l.roadPhase) % 1)
@@ -520,64 +573,176 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     }
   }
 
-  // speed lines (visual tension when fast)
-  function drawSpeedLines(l: Lane) {
-    const speedFrac = Math.min(1, (elapsed - 30) / 60)
-    if (speedFrac <= 0) return
-    const t = performance.now()
-    ctx.save(); ctx.globalAlpha = speedFrac * 0.18; ctx.strokeStyle = '#fff'
-    for (let i = 0; i < 6; i++) {
-      const ang = (i / 6) * Math.PI * 2 + t / 1400
-      const rx = l.center + Math.cos(ang) * l.w * 0.42
-      const ry = nearY * 0.5 + Math.sin(ang) * H * 0.22
-      const len = l.charSize * (0.8 + speedFrac * 1.2)
-      ctx.lineWidth = 1 + speedFrac
-      ctx.beginPath()
-      ctx.moveTo(rx, ry); ctx.lineTo(rx + Math.cos(ang) * len, ry + Math.sin(ang) * len)
-      ctx.stroke()
+  // ── Side scenery ──────────────────────────────────────────────────────────
+  function sideObjPos(l: Lane, so: SideObj): { x: number; y: number; scale: number; alpha: number } {
+    const absZ = Math.max(0, so.z)
+    const pr   = proj(absZ)
+    const hw   = roadHWatY(l, pr.y)
+    const gap  = so.sz * l.charSize * 0.55 * pr.scale   // gap between road edge and object center
+    const baseX = l.center + so.side * (hw + gap)
+    if (so.z >= 0) return { x: baseX, y: pr.y, scale: pr.scale * so.sz, alpha: 1 }
+    // past the player: zoom outward and downward
+    const t     = -so.z  // 0..0.38
+    const exS   = pr.scale * (1 + t * 5) * so.sz
+    const exY   = nearY + (H - nearY) * Math.min(1, t * 3.5)
+    const exHW  = roadHWatY(l, nearY) + gap * (1 + t * 4) + t * l.w * 0.6
+    const exX   = l.center + so.side * exHW
+    return { x: exX, y: exY, scale: exS, alpha: Math.max(0, 1 - t * 4) }
+  }
+
+  function drawSideObj(l: Lane, so: SideObj) {
+    const { x, y, scale, alpha } = sideObjPos(l, so)
+    if (alpha <= 0) return
+    const s = l.charSize * scale
+    ctx.save(); ctx.globalAlpha = alpha
+
+    switch (so.kind) {
+      case 'tree': {
+        ctx.fillStyle = '#5C3A1E'
+        roundRect(x - s * 0.09, y - s * 0.85, s * 0.18, s * 0.85, s * 0.05); ctx.fill()
+        ctx.fillStyle = '#2D7D3A'
+        ctx.beginPath(); ctx.arc(x, y - s * 1.0, s * 0.48, 0, 7); ctx.fill()
+        ctx.fillStyle = '#3A9E48'
+        ctx.beginPath(); ctx.arc(x - s * 0.18, y - s * 1.15, s * 0.36, 0, 7); ctx.fill()
+        ctx.beginPath(); ctx.arc(x + s * 0.17, y - s * 1.10, s * 0.33, 0, 7); ctx.fill()
+        ctx.fillStyle = '#4DC05A'
+        ctx.beginPath(); ctx.arc(x, y - s * 1.28, s * 0.22, 0, 7); ctx.fill()
+        break
+      }
+      case 'mushTree': {
+        ctx.fillStyle = '#C8A060'
+        roundRect(x - s * 0.10, y - s * 0.95, s * 0.20, s * 0.95, s * 0.06); ctx.fill()
+        ctx.fillStyle = '#CC2200'
+        ctx.beginPath(); ctx.ellipse(x, y - s * 0.92, s * 0.62, s * 0.44, 0, Math.PI, 0); ctx.fill()
+        ctx.fillStyle = '#FF4422'
+        ctx.beginPath(); ctx.ellipse(x, y - s * 0.92, s * 0.55, s * 0.38, 0, Math.PI, 0); ctx.fill()
+        ctx.fillStyle = 'rgba(255,255,255,0.8)'
+        for (const [dx, dy] of [[-0.2, -1.1], [0.15, -1.22], [-0.05, -1.18]]) {
+          ctx.beginPath(); ctx.arc(x + s * dx, y + s * dy, s * 0.08, 0, 7); ctx.fill()
+        }
+        break
+      }
+      case 'crystal': {
+        ctx.fillStyle = '#7040CC'
+        ctx.beginPath()
+        ctx.moveTo(x, y - s * 1.3); ctx.lineTo(x + s * 0.28, y - s * 0.75)
+        ctx.lineTo(x + s * 0.22, y); ctx.lineTo(x - s * 0.22, y)
+        ctx.lineTo(x - s * 0.28, y - s * 0.75); ctx.closePath(); ctx.fill()
+        ctx.fillStyle = 'rgba(180,130,255,0.45)'
+        ctx.beginPath()
+        ctx.moveTo(x, y - s * 1.3); ctx.lineTo(x + s * 0.10, y - s * 0.8)
+        ctx.lineTo(x + s * 0.02, y); ctx.closePath(); ctx.fill()
+        // glow
+        const t2 = (Math.sin(performance.now() / 600 + so.z * 5) + 1) / 2
+        ctx.save(); ctx.globalAlpha = alpha * t2 * 0.3; ctx.fillStyle = '#A060FF'
+        ctx.beginPath(); ctx.arc(x, y - s * 0.65, s * 0.4, 0, 7); ctx.fill(); ctx.restore()
+        break
+      }
+      case 'flower': {
+        ctx.strokeStyle = '#3A7A2A'; ctx.lineWidth = s * 0.08
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - s * 0.72); ctx.stroke()
+        const fc = ['#FF88CC', '#FF6699', '#FFB0DD', '#FF44AA']
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2 + performance.now() / 3000
+          ctx.fillStyle = fc[i % fc.length]
+          ctx.beginPath(); ctx.arc(x + Math.cos(a) * s * 0.22, y - s * 0.72 + Math.sin(a) * s * 0.22, s * 0.19, 0, 7); ctx.fill()
+        }
+        ctx.fillStyle = '#FFE000'
+        ctx.beginPath(); ctx.arc(x, y - s * 0.72, s * 0.14, 0, 7); ctx.fill()
+        // second smaller flower offset
+        ctx.strokeStyle = '#3A7A2A'; ctx.lineWidth = s * 0.06
+        ctx.beginPath(); ctx.moveTo(x + so.side * s * 0.55, y); ctx.lineTo(x + so.side * s * 0.55, y - s * 0.5); ctx.stroke()
+        ctx.fillStyle = '#FF99CC'
+        ctx.beginPath(); ctx.arc(x + so.side * s * 0.55, y - s * 0.5, s * 0.14, 0, 7); ctx.fill()
+        break
+      }
+      case 'lamp': {
+        ctx.fillStyle = '#888888'
+        roundRect(x - s * 0.06, y - s * 1.1, s * 0.12, s * 1.1, s * 0.04); ctx.fill()
+        ctx.fillStyle = '#AAAAAA'
+        roundRect(x + so.side * s * (-0.05), y - s * 1.12, s * 0.45, s * 0.16, s * 0.07); ctx.fill()
+        const lampX = x + so.side * s * 0.14
+        const gAlpha = 0.6 + 0.3 * Math.sin(performance.now() / 800)
+        ctx.save(); ctx.globalAlpha = alpha * gAlpha * 0.5; ctx.fillStyle = '#FFFAAA'
+        ctx.beginPath(); ctx.arc(lampX, y - s * 1.04, s * 0.22, 0, 7); ctx.fill()
+        ctx.restore()
+        ctx.fillStyle = '#FFFAAA'
+        ctx.beginPath(); ctx.arc(lampX, y - s * 1.04, s * 0.10, 0, 7); ctx.fill()
+        break
+      }
+      case 'bush': {
+        ctx.fillStyle = '#3A8B30'
+        ctx.beginPath(); ctx.ellipse(x, y - s * 0.28, s * 0.50, s * 0.30, 0, 0, 7); ctx.fill()
+        ctx.fillStyle = '#4EA840'
+        ctx.beginPath(); ctx.ellipse(x - s * 0.22, y - s * 0.32, s * 0.35, s * 0.25, 0, 0, 7); ctx.fill()
+        ctx.beginPath(); ctx.ellipse(x + s * 0.20, y - s * 0.30, s * 0.33, s * 0.23, 0, 0, 7); ctx.fill()
+        ctx.fillStyle = '#64C84A'
+        ctx.beginPath(); ctx.ellipse(x, y - s * 0.44, s * 0.28, s * 0.20, 0, 0, 7); ctx.fill()
+        // occasional berry
+        if (Math.floor(so.z * 100 + so.side) % 3 === 0) {
+          ctx.fillStyle = '#FF3366'
+          ctx.beginPath(); ctx.arc(x + so.side * s * 0.12, y - s * 0.38, s * 0.07, 0, 7); ctx.fill()
+        }
+        break
+      }
     }
     ctx.restore()
   }
 
-  function drawObstacle(l: Lane, o: Obstacle, pr: { y: number; scale: number }) {
-    const bounceOff = o.bounceH * l.charSize * pr.scale   // lift in pixels
-    const s = l.charSize * 0.95 * pr.scale
-    const baseX = l.center + xSlotPx(l, o.xSlot, pr.scale)
-    const y = pr.y - bounceOff
+  function drawSideObjs(l: Lane) {
+    // Sort far-to-near so near objects draw on top
+    const sorted = [...l.sideObjs].sort((a, b) => b.z - a.z)
+    for (const so of sorted) drawSideObj(l, so)
+  }
+
+  // ── Obstacles ─────────────────────────────────────────────────────────────
+  function drawObstacle(l: Lane, o: Obstacle) {
+    // Use extended projection — handles z<0 for "pass-under" zoom effect
+    const { y: baseY, scale: baseScale, alpha: passAlpha } = projFull(o.z)
+    const bounceOff = o.bounceH * l.charSize * baseScale
+    const s        = l.charSize * 0.95 * baseScale
+    const y        = baseY - bounceOff
+    const baseX    = l.center + xSlotPx(l, o.xSlot, baseScale)
+
+    const renderAlpha = o.z < 0 ? passAlpha : o.alpha
+    if (renderAlpha <= 0.01) return
 
     ctx.save()
-    ctx.globalAlpha = o.alpha
+    ctx.globalAlpha = renderAlpha
 
-    // rush: draw speed streaks behind obstacle
-    if (o.pattern === 'rush' && o.rushed) {
-      ctx.save(); ctx.globalAlpha = o.alpha * 0.55
-      ctx.strokeStyle = '#FF6600'; ctx.lineCap = 'round'
+    // For passed-under obstacles: clip to below nearY so they only zoom in from ground area
+    if (o.z < 0) {
+      ctx.beginPath(); ctx.rect(l.x, nearY - 4, l.w, H - nearY + 4); ctx.clip()
+    }
+
+    // rush streaks
+    if (o.pattern === 'rush' && o.rushed && o.z >= 0) {
+      ctx.save(); ctx.globalAlpha = renderAlpha * 0.5; ctx.strokeStyle = '#FF6600'; ctx.lineCap = 'round'
       for (let i = 0; i < 4; i++) {
-        const len = s * (0.6 + i * 0.3), oy = (i - 1.5) * s * 0.22
+        const len = s * (0.5 + i * 0.28), oy = (i - 1.5) * s * 0.22
         ctx.lineWidth = s * 0.08 * (1 - i * 0.18)
-        ctx.beginPath(); ctx.moveTo(baseX + len + s * 0.6, y - s * 0.4 + oy); ctx.lineTo(baseX + s * 0.5, y - s * 0.4 + oy); ctx.stroke()
+        ctx.beginPath(); ctx.moveTo(baseX + len + s * 0.5, y - s * 0.4 + oy); ctx.lineTo(baseX + s * 0.45, y - s * 0.4 + oy); ctx.stroke()
       }
       ctx.restore()
     }
 
-    // stealth: shimmer before reveal
+    // stealth shimmer (pre-reveal)
     if (o.pattern === 'stealth' && o.alpha < 0.5) {
-      ctx.save(); ctx.globalAlpha = Math.sin(performance.now() / 120) * 0.4 + 0.1
+      ctx.save(); ctx.globalAlpha = Math.sin(performance.now() / 120) * 0.3 + 0.08
       ctx.fillStyle = '#C8A0FF'
-      ctx.beginPath(); ctx.arc(baseX, y - s * 0.5, s * 0.7, 0, 7); ctx.fill()
-      ctx.restore()
+      ctx.beginPath(); ctx.arc(baseX, y - s * 0.5, s * 0.7, 0, 7); ctx.fill(); ctx.restore()
     }
 
-    // bounce shadow on ground (timing cue)
-    if (o.pattern === 'bounce' && bounceOff > 2) {
-      const shadowA = Math.max(0, 0.35 * (1 - o.bounceH / 1.5))
+    // bounce shadow on ground (timing cue — gets brighter as obstacle nears ground)
+    if (o.pattern === 'bounce' && o.z >= 0) {
+      const shadowA = 0.4 * Math.max(0, 1 - o.bounceH / 0.8)
       ctx.save(); ctx.globalAlpha = shadowA
-      ctx.fillStyle = 'rgba(0,0,0,0.6)'
-      ctx.beginPath(); ctx.ellipse(baseX, pr.y, s * (0.5 - o.bounceH * 0.1), s * 0.12, 0, 0, 7); ctx.fill()
+      ctx.fillStyle = 'rgba(0,0,0,0.7)'
+      ctx.beginPath(); ctx.ellipse(baseX, baseY, s * (0.5 - o.bounceH * 0.08), s * 0.12, 0, 0, 7); ctx.fill()
       ctx.restore()
     }
 
-    // ── shape drawing ──────────────────────────────────────────────────────
+    // ── Shapes ────────────────────────────────────────────────────────────
     if (o.kind === 'mushroom') {
       ctx.fillStyle = '#F5DEB3'; roundRect(baseX - s * 0.2, y - s * 0.55, s * 0.4, s * 0.55, s * 0.08); ctx.fill()
       ctx.fillStyle = '#E84040'
@@ -621,12 +786,9 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       }
 
     } else if (o.kind === 'bat') {
-      // wings flap based on bouncePhase + time
       const flap = Math.sin(performance.now() / 110 + o.bouncePhase) * 0.45
       ctx.fillStyle = '#3A1060'
-      // body
       ctx.beginPath(); ctx.ellipse(baseX, y - s * 0.38, s * 0.28, s * 0.22, 0, 0, 7); ctx.fill()
-      // wings
       ctx.fillStyle = '#5A2080'
       for (const side of [-1, 1]) {
         ctx.beginPath()
@@ -635,7 +797,6 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
         ctx.quadraticCurveTo(baseX + side * s * 0.5, y - s * 0.12, baseX, y - s * 0.3)
         ctx.closePath(); ctx.fill()
       }
-      // ears
       ctx.fillStyle = '#3A1060'
       for (const side of [-1, 1]) {
         ctx.beginPath()
@@ -644,33 +805,26 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
         ctx.lineTo(baseX + side * s * 0.04, y - s * 0.56)
         ctx.closePath(); ctx.fill()
       }
-      // eyes
       ctx.fillStyle = '#FF4488'
       ctx.beginPath(); ctx.arc(baseX - s * 0.1, y - s * 0.4, s * 0.065, 0, 7); ctx.fill()
       ctx.beginPath(); ctx.arc(baseX + s * 0.1, y - s * 0.4, s * 0.065, 0, 7); ctx.fill()
-      // warning indicator: red glow when swooping low
-      if (o.bounceH < 0.25) {
-        ctx.save(); ctx.globalAlpha = (0.25 - o.bounceH) / 0.25 * 0.6
+      if (o.bounceH < 0.25 && o.z >= 0) {
+        ctx.save(); ctx.globalAlpha = (0.25 - o.bounceH) / 0.25 * 0.55
         ctx.fillStyle = '#FF0000'
-        ctx.beginPath(); ctx.arc(baseX, y - s * 0.38, s * 0.9, 0, 7); ctx.fill()
-        ctx.restore()
+        ctx.beginPath(); ctx.arc(baseX, y - s * 0.38, s * 0.85, 0, 7); ctx.fill(); ctx.restore()
       }
 
     } else if (o.kind === 'pumpkin') {
-      // rolling rotation based on z
-      const roll = (1 - o.z) * Math.PI * 6
+      const roll = (1 - Math.max(0, o.z)) * Math.PI * 6
       ctx.save(); ctx.translate(baseX, y - s * 0.52); ctx.rotate(roll)
-      // body
       ctx.fillStyle = '#FF7A20'
       ctx.beginPath(); ctx.arc(0, 0, s * 0.52, 0, 7); ctx.fill()
-      // ribs
       ctx.strokeStyle = '#E05C00'; ctx.lineWidth = s * 0.06
       for (let r = -2; r <= 2; r++) {
         ctx.save(); ctx.rotate(r * 0.28)
         ctx.beginPath(); ctx.moveTo(0, -s * 0.52); ctx.lineTo(0, s * 0.52); ctx.stroke()
         ctx.restore()
       }
-      // face
       ctx.fillStyle = '#1A0800'
       const eye = (ex: number, ey: number) => {
         ctx.beginPath(); ctx.moveTo(ex - s * 0.1, ey); ctx.lineTo(ex, ey - s * 0.1); ctx.lineTo(ex + s * 0.1, ey); ctx.closePath(); ctx.fill()
@@ -679,25 +833,23 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       ctx.beginPath()
       for (let i = -2; i <= 2; i++) ctx.arc(i * s * 0.1, s * 0.12 + (Math.abs(i) % 2) * s * 0.06, s * 0.06, 0, 7)
       ctx.fill()
-      // stem
       ctx.fillStyle = '#4A8020'; roundRect(-s * 0.08, -s * 0.64, s * 0.16, s * 0.22, s * 0.06); ctx.fill()
       ctx.restore()
-      // warning when near ground
-      if (o.bounceH < 0.15) {
-        ctx.save(); ctx.globalAlpha = (0.15 - o.bounceH) / 0.15 * 0.5
+      if (o.bounceH < 0.15 && o.z >= 0) {
+        ctx.save(); ctx.globalAlpha = (0.15 - o.bounceH) / 0.15 * 0.45
         ctx.fillStyle = '#FF4400'
-        ctx.beginPath(); ctx.arc(baseX, y - s * 0.52, s * 0.8, 0, 7); ctx.fill()
-        ctx.restore()
+        ctx.beginPath(); ctx.arc(baseX, y - s * 0.52, s * 0.8, 0, 7); ctx.fill(); ctx.restore()
       }
     }
 
     ctx.restore()
   }
 
+  // ── Stars ─────────────────────────────────────────────────────────────────
   function drawStar(l: Lane, s: Star, cx: number, pr: { y: number; scale: number }) {
-    const r = l.charSize * 0.42 * pr.scale
+    const r  = l.charSize * 0.42 * pr.scale
     const cy = pr.y - s.h * l.charSize * 1.6 * pr.scale
-    const t = performance.now() / 400
+    const t  = performance.now() / 400
     const bob = Math.sin(t + s.z * 4) * r * 0.18
     const glow = Math.abs(Math.sin(t * 1.3)) * 0.5 + 0.5
     ctx.save(); ctx.globalAlpha = glow * 0.4; ctx.fillStyle = '#FFE566'
@@ -712,29 +864,32 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     }
     ctx.closePath(); ctx.fill(); ctx.stroke()
     if (s.h > 0.8) {
-      const ac = s.h > 1.5 ? 2 : 1; ctx.fillStyle = '#FFD700'
+      const ac = s.h > 1.5 ? 2 : 1
       for (let i = 0; i < ac; i++) {
         const ay = cy + bob - r * 1.4 - i * r * 0.7
-        ctx.save(); ctx.globalAlpha = 0.8
+        ctx.save(); ctx.globalAlpha = 0.8; ctx.fillStyle = '#FFD700'
         ctx.beginPath(); ctx.moveTo(cx, ay - r * 0.4); ctx.lineTo(cx - r * 0.3, ay); ctx.lineTo(cx + r * 0.3, ay); ctx.closePath(); ctx.fill()
         ctx.restore()
       }
     }
   }
 
+  // ── Character ─────────────────────────────────────────────────────────────
   function drawChar(l: Lane, cx: number) {
     const baseY = nearY - l.jumpOffset, s = l.charSize, t = performance.now()
+    // trail
     for (const td of l.trail) {
-      ctx.save(); ctx.globalAlpha = (td.life / td.maxLife) * 0.28
-      ctx.fillStyle = CHAR_COLORS[l.idx]
-      roundRect(cx - td.r * 0.9 / 2, td.y - td.r * 1.8, td.r * 0.9, td.r * 1.8, td.r * 0.4)
+      ctx.save(); ctx.globalAlpha = (td.life / td.maxLife) * 0.28; ctx.fillStyle = CHAR_COLORS[l.idx]
+      roundRect(td.x - td.r * 0.9 / 2, td.y - td.r * 1.8, td.r * 0.9, td.r * 1.8, td.r * 0.4)
       ctx.fill(); ctx.restore()
     }
+    // double-jump ring
     if (!l.onGround && l.jumpCount === 2 && l.vy > 0) {
       const ring = (performance.now() % 400) / 400
       ctx.save(); ctx.strokeStyle = '#FFD700'; ctx.lineWidth = s * 0.06; ctx.globalAlpha = 1 - ring
       ctx.beginPath(); ctx.arc(cx, baseY - s * 0.8, s * (0.6 + ring * 0.8), 0, 7); ctx.stroke(); ctx.restore()
     }
+    // shadow
     ctx.fillStyle = 'rgba(0,0,0,0.12)'
     ctx.beginPath(); ctx.ellipse(cx, nearY + s * 0.06, s * 0.4 * (l.onGround ? 1 : 0.5), s * 0.10, 0, 0, 7); ctx.fill()
 
@@ -751,7 +906,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       const bg = ctx.createLinearGradient(cx - bw / 2, top, cx + bw / 2, top + bh)
       bg.addColorStop(0, '#fff'); bg.addColorStop(0.25, CHAR_COLORS[l.idx]); bg.addColorStop(1, CHAR_SHADOW[l.idx])
       ctx.fillStyle = bg
-    } else { ctx.fillStyle = '#fff' }
+    } else ctx.fillStyle = '#fff'
     roundRect(cx - bw / 2, top, bw, bh, bw * 0.42); ctx.fill()
     if (!flashing) { ctx.fillStyle = 'rgba(255,255,255,0.45)'; roundRect(cx - bw * 0.35, top + bh * 0.1, bw * 0.28, bh * 0.25, bw * 0.12); ctx.fill() }
 
@@ -787,14 +942,11 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       ctx.fillStyle = CHAR_SHADOW[l.idx]; roundRect(cx - bw * 0.38, top - bh * 0.12, bw * 0.76, bh * 0.14, bh * 0.06); ctx.fill()
       ctx.fillStyle = CHAR_COLORS[l.idx]; roundRect(cx - bw * 0.24, top - bh * 0.38, bw * 0.48, bh * 0.30, bh * 0.10); ctx.fill()
     }
-    // dodge direction arrow
     if (Math.abs(l.xSmooth) > 0.15) {
-      ctx.save(); ctx.globalAlpha = Math.min(1, Math.abs(l.xSmooth)) * 0.7
-      ctx.fillStyle = '#74C7EC'
+      ctx.save(); ctx.globalAlpha = Math.min(1, Math.abs(l.xSmooth)) * 0.7; ctx.fillStyle = '#74C7EC'
       const dir = l.xSmooth > 0 ? 1 : -1, ax = cx + dir * bw * 0.9, ay = top + bh * 0.5
       ctx.beginPath()
-      ctx.moveTo(ax + dir * s * 0.3, ay)
-      ctx.lineTo(ax, ay - s * 0.18); ctx.lineTo(ax, ay + s * 0.18); ctx.closePath(); ctx.fill()
+      ctx.moveTo(ax + dir * s * 0.3, ay); ctx.lineTo(ax, ay - s * 0.18); ctx.lineTo(ax, ay + s * 0.18); ctx.closePath(); ctx.fill()
       ctx.restore()
     }
   }
@@ -817,6 +969,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
   }
 
+  // ── Lane UI ───────────────────────────────────────────────────────────────
   function drawLaneUI(l: Lane) {
     const cx = l.center
     ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = Math.max(2, H * 0.006)
@@ -844,21 +997,44 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
   }
 
+  // ── Lane scene ────────────────────────────────────────────────────────────
   function drawLaneScene(l: Lane) {
     ctx.save()
     ctx.beginPath(); ctx.rect(l.x, 0, l.w, H); ctx.clip()
     ctx.translate(shakeX, shakeY)
 
-    drawBackground(l); drawRoad(l); drawSpeedLines(l)
+    drawBackground(l)
+    // Side objects drawn before road so they appear in the grass zone
+    drawSideObjs(l)
+    drawRoad(l)
 
+    // Speed lines (high-speed atmosphere)
+    const speedFrac = Math.min(1, (elapsed - 35) / 55)
+    if (speedFrac > 0) {
+      const t = performance.now()
+      ctx.save(); ctx.globalAlpha = speedFrac * 0.15; ctx.strokeStyle = '#fff'
+      for (let i = 0; i < 7; i++) {
+        const ang = (i / 7) * Math.PI * 2 + t / 1400
+        const rx = l.center + Math.cos(ang) * l.w * 0.44
+        const ry = nearY * 0.5 + Math.sin(ang) * H * 0.22
+        const len = l.charSize * (0.9 + speedFrac * 1.3)
+        ctx.lineWidth = 1 + speedFrac * 0.8
+        ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + Math.cos(ang) * len, ry + Math.sin(ang) * len); ctx.stroke()
+      }
+      ctx.restore()
+    }
+
+    // Items sorted far-to-near
     const items: { z: number; kind: 'ob' | 'star'; ref: Obstacle | Star }[] = []
     for (const o of l.obstacles) items.push({ z: o.z, kind: 'ob', ref: o })
     for (const s of l.stars)     items.push({ z: s.z, kind: 'star', ref: s })
     items.sort((a, b) => b.z - a.z)
     for (const it of items) {
-      const pr = proj(it.z)
-      if (it.kind === 'ob') drawObstacle(l, it.ref as Obstacle, pr)
-      else drawStar(l, it.ref as Star, l.center, pr)
+      if (it.kind === 'ob') drawObstacle(l, it.ref as Obstacle)
+      else {
+        const pr = proj(it.z)
+        drawStar(l, it.ref as Star, l.center, pr)
+      }
     }
 
     const charX = l.center + xSlotPx(l, l.xSmooth)
@@ -877,6 +1053,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     ctx.setLineDash([])
   }
 
+  // ── UI ────────────────────────────────────────────────────────────────────
   function button(x: number, y: number, w: number, h: number, label: string, color: string, action: string, data?: number) {
     ctx.save()
     ctx.fillStyle = 'rgba(0,0,0,0.25)'; roundRect(x + 3, y + 5, w, h, h * 0.28); ctx.fill()
@@ -900,13 +1077,12 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     ctx.fillStyle = '#FFE0EC'; ctx.strokeStyle = 'rgba(180,50,100,0.5)'; ctx.lineWidth = H * 0.008
     ctx.font = `bold ${Math.floor(H * 0.13)}px Jua, sans-serif`
     ctx.strokeText('달려라!', W / 2, H * 0.2 + bob); ctx.fillText('달려라!', W / 2, H * 0.2 + bob); ctx.restore()
-    ctx.font = `${Math.floor(H * 0.038)}px Jua, sans-serif`; ctx.fillStyle = '#FFE0EC'
-    ctx.fillText('별★ 먹으면 UP! 더블점프 가능!', W / 2, H * 0.30)
-    ctx.fillStyle = '#C8EEFF'
-    ctx.fillText('좌우 스와이프로 피하기!', W / 2, H * 0.37)
-    ctx.fillStyle = 'rgba(200,200,200,0.8)'; ctx.font = `${Math.floor(H * 0.030)}px Jua, sans-serif`
-    ctx.fillText('박쥐는 낮게 날 때 점프! / 호박은 바닥에 닿을 때 점프! / 보라 크리스탈 주의!', W / 2, H * 0.44)
-    ctx.fillStyle = '#C8EEFF'; ctx.font = `${Math.floor(H * 0.038)}px Jua, sans-serif`
+    ctx.font = `${Math.floor(H * 0.036)}px Jua, sans-serif`; ctx.fillStyle = '#FFE0EC'
+    ctx.fillText('★ 별 먹으면 콤보! 더블점프 가능!', W / 2, H * 0.30)
+    ctx.fillStyle = '#C8EEFF'; ctx.fillText('좌우 스와이프로 피하기!', W / 2, H * 0.37)
+    ctx.fillStyle = 'rgba(190,190,210,0.85)'; ctx.font = `${Math.floor(H * 0.027)}px Jua, sans-serif`
+    ctx.fillText('박쥐 낮게 날 때 점프 · 호박 바닥 닿을 때 점프 · 보라 크리스탈 주의', W / 2, H * 0.44)
+    ctx.fillStyle = '#C8EEFF'; ctx.font = `${Math.floor(H * 0.036)}px Jua, sans-serif`
     ctx.fillText('몇 명이서 달릴까?', W / 2, H * 0.52)
     uiButtons = []
     const bw = Math.min(W * 0.2, H * 0.22), bh = bw * 0.65, gap = W * 0.025
@@ -988,20 +1164,17 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
   const handlePointerUp = (e: PointerEvent) => {
     const touch = touches.get(e.pointerId); touches.delete(e.pointerId)
     if (!touch || state !== 'playing') return
-    const r = canvas.getBoundingClientRect()
+    const r  = canvas.getBoundingClientRect()
     const ex = e.clientX - r.left
     const dx = ex - touch.startX, dt_ms = e.timeStamp - touch.t
-    if (Math.abs(dx) > 32 && dt_ms < 380) {
-      doDodge(touch.lane, dx > 0 ? 1 : -1)
-    } else if (Math.abs(dx) < 22 && dt_ms < 280) {
-      doJump(touch.lane)
-    }
+    if (Math.abs(dx) > 32 && dt_ms < 380) doDodge(touch.lane, dx > 0 ? 1 : -1)
+    else if (Math.abs(dx) < 22 && dt_ms < 280) doJump(touch.lane)
   }
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (state !== 'playing') return
     if (e.code === 'Space') { e.preventDefault(); doJump(0) }
-    else if (e.code === 'ArrowLeft' || e.code === 'KeyA') doDodge(0, -1)
+    else if (e.code === 'ArrowLeft'  || e.code === 'KeyA') doDodge(0, -1)
     else if (e.code === 'ArrowRight' || e.code === 'KeyD') doDodge(0, 1)
     else if (e.code.startsWith('Digit')) {
       const n = parseInt(e.code.slice(5)) - 1
@@ -1009,20 +1182,20 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     }
   }
 
-  canvas.addEventListener('pointerdown', handlePointerDown, { passive: false })
-  canvas.addEventListener('pointerup', handlePointerUp)
+  canvas.addEventListener('pointerdown',  handlePointerDown,  { passive: false })
+  canvas.addEventListener('pointerup',    handlePointerUp)
   canvas.addEventListener('pointercancel', e => touches.delete(e.pointerId))
-  window.addEventListener('keydown', handleKeyDown)
-  window.addEventListener('resize', resize)
+  window.addEventListener('keydown',  handleKeyDown)
+  window.addEventListener('resize',   resize)
 
   resize()
   animId = requestAnimationFrame(loop)
 
   return () => {
     cancelAnimationFrame(animId)
-    canvas.removeEventListener('pointerdown', handlePointerDown)
-    canvas.removeEventListener('pointerup', handlePointerUp)
-    window.removeEventListener('keydown', handleKeyDown)
-    window.removeEventListener('resize', resize)
+    canvas.removeEventListener('pointerdown',  handlePointerDown)
+    canvas.removeEventListener('pointerup',    handlePointerUp)
+    window.removeEventListener('keydown',  handleKeyDown)
+    window.removeEventListener('resize',   resize)
   }
 }
