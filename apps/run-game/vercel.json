@@ -1,6 +1,6 @@
 {
-  "installCommand": "cd ../.. && yarn install --immutable",
-  "buildCommand": "cd ../.. && yarn turbo build --filter=@gujuck/run-game",
-  "outputDirectory": "dist",
+  "buildCommand": "yarn turbo build --filter=@gujuck/run-game",
+  "outputDirectory": "apps/run-game/dist",
+  "installCommand": "yarn install --immutable",
   "framework": null
 }
