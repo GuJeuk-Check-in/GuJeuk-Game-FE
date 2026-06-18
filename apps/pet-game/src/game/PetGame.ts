@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function initGame(): () => void {
-  const BASE = 'https://gujeuk.dsmhs.kr'
+  const BASE = import.meta.env.VITE_API_BASE as string
   const TOKEN_KEY = 'gujuk_pet_token'
   let token: string | null = localStorage.getItem(TOKEN_KEY)
 
