@@ -1,6 +1,6 @@
 {
   "buildCommand": "yarn turbo build --filter=@gujuck/pet-game",
   "outputDirectory": "apps/pet-game/dist",
-  "installCommand": "yarn install --immutable",
+  "installCommand": "corepack enable && yarn install --immutable",
   "framework": null
 }
