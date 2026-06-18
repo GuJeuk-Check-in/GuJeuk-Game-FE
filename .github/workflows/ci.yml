@@ -15,11 +15,18 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'yarn'
+          node-version: 24
 
       - name: Enable Corepack
         run: corepack enable
+
+      - name: Cache Yarn packages
+        uses: actions/cache@v4
+        with:
+          path: .yarn/cache
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -37,11 +44,18 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'yarn'
+          node-version: 24
 
       - name: Enable Corepack
         run: corepack enable
+
+      - name: Cache Yarn packages
+        uses: actions/cache@v4
+        with:
+          path: .yarn/cache
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -49,14 +63,12 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
 
-      # Vercel 시크릿이 설정되어 있는지 확인
       - name: Check Vercel token
         id: check_vercel
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then
             echo "configured=false" >> $GITHUB_OUTPUT
             echo "⚠️  VERCEL_TOKEN 시크릿이 설정되지 않아 배포를 건너뜁니다."
-            echo "GitHub Settings → Secrets → Actions 에서 시크릿을 등록해주세요."
           else
             echo "configured=true" >> $GITHUB_OUTPUT
           fi
