@@ -49,7 +49,22 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
 
+      # Vercel 시크릿이 설정되어 있는지 확인
+      - name: Check Vercel token
+        id: check_vercel
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "⚠️  VERCEL_TOKEN 시크릿이 설정되지 않아 배포를 건너뜁니다."
+            echo "GitHub Settings → Secrets → Actions 에서 시크릿을 등록해주세요."
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
       - name: Deploy run-game to Vercel
+        if: steps.check_vercel.outputs.configured == 'true'
         working-directory: apps/run-game
         run: vercel --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
         env:
@@ -57,6 +72,7 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_RUN }}
 
       - name: Deploy pet-game to Vercel
+        if: steps.check_vercel.outputs.configured == 'true'
         working-directory: apps/pet-game
         run: vercel --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
         env:
@@ -64,8 +80,17 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_PET }}
 
       - name: Deploy tap-garden-game to Vercel
+        if: steps.check_vercel.outputs.configured == 'true'
         working-directory: apps/tap-garden-game
         run: vercel --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_TAP }}
+
+      - name: Deploy strawberry-catch-game to Vercel
+        if: steps.check_vercel.outputs.configured == 'true' && secrets.VERCEL_PROJECT_ID_STRAWBERRY != ''
+        working-directory: apps/strawberry-catch-game
+        run: vercel --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_STRAWBERRY }}
