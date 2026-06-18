@@ -44,7 +44,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
   // ── Types ─────────────────────────────────────────────────────────────────
   type Particle  = { x: number; y: number; vx: number; vy: number; life: number; maxLife: number; color: string; r: number; gravity: number }
   type FloatText = { x: number; y: number; vy: number; life: number; maxLife: number; text: string; color: string; size: number }
-  type Star      = { z: number; resolved: boolean; got: boolean; h: number }
+  type Star      = { z: number; resolved: boolean; got: boolean; h: number; xSlot: number }
   type Cloud     = { x: number; y: number; w: number; s: number; puffs: number[] }
   type TrailDot  = { x: number; y: number; life: number; maxLife: number; r: number }
 
@@ -58,6 +58,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     bouncePhase: number; bounceSpeed: number; bounceH: number
     speedMul: number; rushed: boolean
     alpha: number
+    xSlideFrom: number  // ±2.5 = slides in from side, 0 = normal
   }
 
   // Side scenery objects alongside the road
@@ -68,7 +69,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     idx: number; x: number; w: number; center: number; charSize: number
     jumpOffset: number; vy: number; onGround: boolean
     canDoubleJump: boolean; jumpCount: number; wasGrounded: boolean
-    xSlot: number; targetXSlot: number; dodgeTimer: number; xSmooth: number
+    xSlot: number; targetXSlot: number; xSmooth: number
     hearts: number; score: number; alive: boolean; invuln: number
     sqX: number; sqY: number
     obstacles: Obstacle[]; stars: Star[]
@@ -99,7 +100,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       charSize: Math.min(lw * 0.34, H * 0.12),
       jumpOffset: 0, vy: 0, onGround: true,
       canDoubleJump: false, jumpCount: 0, wasGrounded: true,
-      xSlot: 0, targetXSlot: 0, dodgeTimer: 0, xSmooth: 0,
+      xSlot: 0, targetXSlot: 0, xSmooth: 0,
       hearts: 3, score: 0, alive: true, invuln: 0,
       sqX: 1, sqY: 1,
       obstacles: [], stars: [], particles: [], floatTexts: [], trail: [],
@@ -182,6 +183,13 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
 
   function xSlotPx(l: Lane, slot: number, scale = 1) { return slot * l.w * 0.22 * scale }
 
+  // Computes how much lateral slide offset remains (animates from xSlideFrom → 0 as z: 1→0.5)
+  function slideOffset(o: Obstacle): number {
+    if (o.xSlideFrom === 0) return 0
+    const progress = 1 - Math.max(0, Math.min(1, (o.z - 0.5) / 0.5))
+    return o.xSlideFrom * (1 - progress)
+  }
+
   // Minimum jumpOffset (in charSize units) to visually clear this obstacle
   function clearanceH(o: Obstacle): number {
     switch (o.kind) {
@@ -194,16 +202,17 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
   }
 
   // ── Obstacle factory ──────────────────────────────────────────────────────
-  function makeObstacle(kind: ObstacleKind, z: number): Obstacle {
+  // xSlot is the destination lane (-1 left, 0 center, 1 right); decided by the spawn wave.
+  function makeObstacle(kind: ObstacleKind, z: number, xSlot = 0): Obstacle {
     let pattern: ObstaclePattern = 'static'
     if (kind === 'bat' || kind === 'pumpkin') pattern = 'bounce'
     else if (elapsed > 22 && kind === 'crystal'  && Math.random() < 0.40) pattern = 'stealth'
     else if (elapsed > 18 && (kind === 'spike' || kind === 'mushroom') && Math.random() < 0.30) pattern = 'rush'
 
-    let xSlot = 0
-    if (elapsed > 28 && playerCount === 1) {
-      const r = Math.random()
-      xSlot = r < 0.28 ? -1 : r < 0.56 ? 1 : 0
+    // Some obstacles glide in from the outer edge toward their target lane
+    let xSlideFrom = 0
+    if (elapsed > 14 && Math.random() < 0.22 && pattern !== 'stealth') {
+      xSlideFrom = (xSlot <= 0 ? -1 : 1) * 2.6
     }
 
     return {
@@ -213,7 +222,31 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       bounceH: 0,
       speedMul: 1, rushed: false,
       alpha: pattern === 'stealth' ? 0 : 1,
+      xSlideFrom,
     }
+  }
+
+  // Spawn a lane-aware wave: blocks one or two lanes but ALWAYS leaves one open,
+  // so the player weaves left/right (or jumps) to survive.
+  function spawnWave(l: Lane) {
+    const pool: ObstacleKind[] = elapsed < 12
+      ? ['mushroom', 'mushroom', 'spike']
+      : elapsed < 30
+        ? ['mushroom', 'crystal', 'spike', 'bat', 'pumpkin']
+        : ['mushroom', 'crystal', 'spike', 'doubleMush', 'bat', 'pumpkin', 'pumpkin']
+    const pick = () => pool[Math.floor(Math.random() * pool.length)]
+
+    // Early game: gentle single center obstacle
+    if (elapsed < 7) { l.obstacles.push(makeObstacle(pick(), 1.0, 0)); return }
+
+    // Shuffle the three lanes, then block the first 1–2 — the rest stay open
+    const order = [-1, 0, 1]
+    for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const tmp = order[i]; order[i] = order[j]; order[j] = tmp }
+    const blocked = elapsed > 16 && Math.random() < 0.42 ? 2 : 1
+    for (let i = 0; i < blocked; i++) l.obstacles.push(makeObstacle(pick(), 1.0 + i * 0.03, order[i]))
+
+    // Occasional far follow-up in the lane that was just open — keeps the weave flowing
+    if (elapsed > 22 && Math.random() < 0.34) l.obstacles.push(makeObstacle(pick(), 1.30, order[2]))
   }
 
   // ── Game control ──────────────────────────────────────────────────────────
@@ -239,11 +272,20 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     }
   }
 
-  function doDodge(li: number, dir: -1 | 1) {
+  // Step one lane in a direction and STAY there (persistent — used by keyboard)
+  function doMove(li: number, dir: -1 | 1) {
     const l = lanes[li]; if (!l || !l.alive) return
-    const next = l.targetXSlot === 0 ? dir : 0
-    l.targetXSlot = next; l.dodgeTimer = 0.65; sDodge()
+    const cur = Math.max(-1, Math.min(1, Math.round(l.targetXSlot)))
+    const next = Math.max(-1, Math.min(1, cur + dir))
+    if (next === cur) return
+    l.targetXSlot = next; sDodge()
     spawnParticles(l, l.center + xSlotPx(l, l.xSmooth), nearY - l.jumpOffset - l.charSize * 0.5, 5, dir < 0 ? ['#74C7EC', '#fff'] : ['#F9E2AF', '#fff'], 0.7, 400)
+  }
+
+  // Set continuous lateral position (used by drag) — clamped to the road
+  function setLateral(li: number, slot: number) {
+    const l = lanes[li]; if (!l || !l.alive) return
+    l.targetXSlot = Math.max(-1, Math.min(1, slot))
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
@@ -291,8 +333,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       } else if (hitGround) { l.jumpOffset = 0; l.vy = 0; l.onGround = true }
       l.wasGrounded = l.onGround
 
-      // ── lateral smooth
-      if (l.dodgeTimer > 0) { l.dodgeTimer -= dt; if (l.dodgeTimer <= 0) l.targetXSlot = 0 }
+      // ── lateral smooth (position persists — the player stays in whichever lane they moved to)
       l.xSmooth += (l.targetXSlot - l.xSmooth) * Math.min(1, dt * 14)
       l.sqX += (1 - l.sqX) * Math.min(1, dt * 14)
       l.sqY += (1 - l.sqY) * Math.min(1, dt * 14)
@@ -302,26 +343,18 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       l.blink = Math.max(0, l.blink - dt)
       if (l.comboTimer > 0) { l.comboTimer -= dt; if (l.comboTimer <= 0) l.combo = 0 }
 
-      // ── obstacle spawn
+      // ── obstacle spawn (lane-aware waves)
       l.spawnT -= dt
       if (l.spawnT <= 0) {
-        const pool: ObstacleKind[] = elapsed < 12
-          ? ['mushroom', 'mushroom', 'spike']
-          : elapsed < 30
-            ? ['mushroom', 'crystal', 'spike', 'bat', 'pumpkin']
-            : ['mushroom', 'crystal', 'spike', 'doubleMush', 'bat', 'pumpkin', 'pumpkin']
-        l.obstacles.push(makeObstacle(pool[Math.floor(Math.random() * pool.length)], 1.0))
-        if (elapsed > 18 && Math.random() < 0.28) {
-          const p2: ObstacleKind[] = ['mushroom', 'crystal', 'spike']
-          l.obstacles.push(makeObstacle(p2[Math.floor(Math.random() * p2.length)], 1.22))
-        }
+        spawnWave(l)
         l.spawnT = Math.max(0.55, 1.5 - elapsed * 0.017) + Math.random() * 0.6
       }
 
       l.starT -= dt
       if (l.starT <= 0) {
         const r = Math.random()
-        l.stars.push({ z: 1, resolved: false, got: false, h: r < 0.5 ? 0.5 : r < 0.8 ? 1.0 : 1.8 })
+        const sslot = elapsed > 10 ? [-1, 0, 1][Math.floor(Math.random() * 3)] : 0
+        l.stars.push({ z: 1, resolved: false, got: false, h: r < 0.5 ? 0.5 : r < 0.8 ? 1.0 : 1.8, xSlot: sslot })
         l.starT = 2.4 + Math.random() * 2.4
       }
 
@@ -365,17 +398,20 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
         if (o.resolved || o.z > 0.10 || o.z < -0.02) continue
 
         // ── lateral check: precise pixel comparison ──
-        const pr     = proj(Math.max(0.001, o.z))
-        const obstX  = l.center + xSlotPx(l, o.xSlot, pr.scale)
-        const obstHW = l.charSize * pr.scale * 0.40
-        const xOverlap = Math.abs(obstX - charX) < charHW + obstHW
+        const pr        = proj(Math.max(0.001, o.z))
+        const effectiveSlot = o.xSlot + slideOffset(o)
+        const obstX     = l.center + xSlotPx(l, effectiveSlot, pr.scale)
+        const obstHW    = l.charSize * pr.scale * 0.40
+        const xOverlap  = Math.abs(obstX - charX) < charHW + obstHW
 
         if (!xOverlap) {
-          // Clean lateral dodge
+          // Clean lateral dodge — only celebrate genuine near-misses, not far-lane obstacles
           if (o.z <= 0.03) {
             o.resolved = true
-            spawnFloatText(l, charX, nearY - l.jumpOffset - l.charSize * 1.6, 'DODGE!', '#74C7EC', Math.floor(H * 0.05))
-            spawnParticles(l, charX, nearY - l.jumpOffset - l.charSize * 0.5, 5, ['#74C7EC', '#fff'], 0.8, 300)
+            if (Math.abs(obstX - charX) < charHW + obstHW * 2.4) {
+              spawnFloatText(l, charX, nearY - l.jumpOffset - l.charSize * 1.6, 'NICE!', '#74C7EC', Math.floor(H * 0.05))
+              spawnParticles(l, charX, nearY - l.jumpOffset - l.charSize * 0.5, 5, ['#74C7EC', '#fff'], 0.8, 300)
+            }
           }
           continue
         }
@@ -424,7 +460,8 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
         if (!s.resolved && s.z <= 0.07) {
           s.resolved = true
           const jumpH = l.jumpOffset / (l.charSize * 2.5)
-          const canGet = (s.h <= 0.6) || (s.h <= 1.2 && jumpH > 0.3) || (s.h > 1.2 && jumpH > 0.9)
+          const aligned = Math.abs(l.xSmooth - s.xSlot) < 0.55
+          const canGet = aligned && ((s.h <= 0.6) || (s.h <= 1.2 && jumpH > 0.3) || (s.h > 1.2 && jumpH > 0.9))
           if (canGet) {
             s.got = true; l.combo++; l.comboTimer = 3.5
             const mul = Math.max(1, Math.floor(l.combo / 3))
@@ -702,7 +739,21 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     const bounceOff = o.bounceH * l.charSize * baseScale
     const s        = l.charSize * 0.95 * baseScale
     const y        = baseY - bounceOff
-    const baseX    = l.center + xSlotPx(l, o.xSlot, baseScale)
+    const effectiveSlot = o.xSlot + slideOffset(o)
+    const baseX    = l.center + xSlotPx(l, effectiveSlot, baseScale)
+
+    // Draw slide trail when obstacle is incoming from side
+    const slide = slideOffset(o)
+    if (Math.abs(slide) > 0.1 && o.z >= 0) {
+      const trailDir = slide > 0 ? 1 : -1
+      ctx.save(); ctx.globalAlpha = Math.min(0.5, Math.abs(slide) / 2.8) * (o.alpha || 1)
+      const trailLen = l.w * 0.18 * Math.abs(slide) / 2.8
+      const tg = ctx.createLinearGradient(baseX, baseY, baseX + trailDir * trailLen, baseY)
+      tg.addColorStop(0, 'rgba(255,200,80,0.6)'); tg.addColorStop(1, 'rgba(255,200,80,0)')
+      ctx.fillStyle = tg
+      ctx.fillRect(baseX, baseY - s * 0.6, trailDir * trailLen, s * 0.5)
+      ctx.restore()
+    }
 
     const renderAlpha = o.z < 0 ? passAlpha : o.alpha
     if (renderAlpha <= 0.01) return
@@ -1032,8 +1083,9 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     for (const it of items) {
       if (it.kind === 'ob') drawObstacle(l, it.ref as Obstacle)
       else {
+        const st = it.ref as Star
         const pr = proj(it.z)
-        drawStar(l, it.ref as Star, l.center, pr)
+        drawStar(l, st, l.center + xSlotPx(l, st.xSlot, pr.scale), pr)
       }
     }
 
@@ -1079,7 +1131,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     ctx.strokeText('달려라!', W / 2, H * 0.2 + bob); ctx.fillText('달려라!', W / 2, H * 0.2 + bob); ctx.restore()
     ctx.font = `${Math.floor(H * 0.036)}px Jua, sans-serif`; ctx.fillStyle = '#FFE0EC'
     ctx.fillText('★ 별 먹으면 콤보! 더블점프 가능!', W / 2, H * 0.30)
-    ctx.fillStyle = '#C8EEFF'; ctx.fillText('좌우 스와이프로 피하기!', W / 2, H * 0.37)
+    ctx.fillStyle = '#C8EEFF'; ctx.fillText('드래그로 좌우 이동 · 클릭(탭)으로 점프!', W / 2, H * 0.37)
     ctx.fillStyle = 'rgba(190,190,210,0.85)'; ctx.font = `${Math.floor(H * 0.027)}px Jua, sans-serif`
     ctx.fillText('박쥐 낮게 날 때 점프 · 호박 바닥 닿을 때 점프 · 보라 크리스탈 주의', W / 2, H * 0.44)
     ctx.fillStyle = '#C8EEFF'; ctx.font = `${Math.floor(H * 0.036)}px Jua, sans-serif`
@@ -1091,7 +1143,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     ctx.fillStyle = '#FFD700'; ctx.font = `bold ${Math.floor(H * 0.042)}px Jua, sans-serif`
     ctx.fillText('🏆 최고 점수: ' + bestSolo, W / 2, H * 0.80)
     ctx.fillStyle = 'rgba(200,220,255,0.7)'; ctx.font = `${Math.floor(H * 0.026)}px Jua, sans-serif`
-    ctx.fillText('PC: Space/숫자 점프 · A/D 또는 ←/→ 회피', W / 2, H * 0.88)
+    ctx.fillText('PC: 클릭/Space 점프 · 드래그 또는 ←/→ 좌우 이동', W / 2, H * 0.88)
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
   }
 
@@ -1150,32 +1202,48 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     return false
   }
 
-  type Touch = { startX: number; startY: number; t: number; lane: number }
+  // Tap (no drag) = jump · Drag sideways = move lanes (snaps to nearest lane on release)
+  type Touch = { startX: number; startY: number; t: number; lane: number; startSlot: number; dragging: boolean }
   const touches = new Map<number, Touch>()
+  const dragThresh = () => Math.max(9, W * 0.011)
 
   const handlePointerDown = (e: PointerEvent) => {
     e.preventDefault(); initAudio()
     const r = canvas.getBoundingClientRect()
     const x = e.clientX - r.left, y = e.clientY - r.top
     if (state !== 'playing') { hitUI(x, y); return }
-    touches.set(e.pointerId, { startX: x, startY: y, t: e.timeStamp, lane: laneAt(x) })
+    const lane = laneAt(x)
+    touches.set(e.pointerId, { startX: x, startY: y, t: e.timeStamp, lane, startSlot: lanes[lane]?.targetXSlot ?? 0, dragging: false })
+    try { canvas.setPointerCapture(e.pointerId) } catch (_) {}
+  }
+
+  const handlePointerMove = (e: PointerEvent) => {
+    const touch = touches.get(e.pointerId); if (!touch || state !== 'playing') return
+    const r = canvas.getBoundingClientRect()
+    const x = e.clientX - r.left, y = e.clientY - r.top
+    const dx = x - touch.startX, dy = y - touch.startY
+    if (!touch.dragging && Math.hypot(dx, dy) > dragThresh()) touch.dragging = true
+    if (touch.dragging) {
+      const l = lanes[touch.lane]; if (!l) return
+      setLateral(touch.lane, touch.startSlot + dx / (l.w * 0.15))
+    }
   }
 
   const handlePointerUp = (e: PointerEvent) => {
     const touch = touches.get(e.pointerId); touches.delete(e.pointerId)
+    try { canvas.releasePointerCapture(e.pointerId) } catch (_) {}
     if (!touch || state !== 'playing') return
-    const r  = canvas.getBoundingClientRect()
-    const ex = e.clientX - r.left
-    const dx = ex - touch.startX, dt_ms = e.timeStamp - touch.t
-    if (Math.abs(dx) > 32 && dt_ms < 380) doDodge(touch.lane, dx > 0 ? 1 : -1)
-    else if (Math.abs(dx) < 22 && dt_ms < 280) doJump(touch.lane)
+    if (touch.dragging) {
+      // snap to the nearest lane so the player settles cleanly
+      const l = lanes[touch.lane]; if (l) l.targetXSlot = Math.max(-1, Math.min(1, Math.round(l.targetXSlot)))
+    } else if (e.timeStamp - touch.t < 400) doJump(touch.lane)
   }
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (state !== 'playing') return
     if (e.code === 'Space') { e.preventDefault(); doJump(0) }
-    else if (e.code === 'ArrowLeft'  || e.code === 'KeyA') doDodge(0, -1)
-    else if (e.code === 'ArrowRight' || e.code === 'KeyD') doDodge(0, 1)
+    else if (e.code === 'ArrowLeft'  || e.code === 'KeyA') doMove(0, -1)
+    else if (e.code === 'ArrowRight' || e.code === 'KeyD') doMove(0, 1)
     else if (e.code.startsWith('Digit')) {
       const n = parseInt(e.code.slice(5)) - 1
       if (n >= 0 && n < playerCount) doJump(n)
@@ -1183,8 +1251,9 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
   }
 
   canvas.addEventListener('pointerdown',  handlePointerDown,  { passive: false })
+  canvas.addEventListener('pointermove',  handlePointerMove,  { passive: false })
   canvas.addEventListener('pointerup',    handlePointerUp)
-  canvas.addEventListener('pointercancel', e => touches.delete(e.pointerId))
+  canvas.addEventListener('pointercancel', e => { touches.delete(e.pointerId) })
   window.addEventListener('keydown',  handleKeyDown)
   window.addEventListener('resize',   resize)
 
@@ -1194,6 +1263,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
   return () => {
     cancelAnimationFrame(animId)
     canvas.removeEventListener('pointerdown',  handlePointerDown)
+    canvas.removeEventListener('pointermove',  handlePointerMove)
     canvas.removeEventListener('pointerup',    handlePointerUp)
     window.removeEventListener('keydown',  handleKeyDown)
     window.removeEventListener('resize',   resize)
