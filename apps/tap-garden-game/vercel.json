@@ -1,6 +1,6 @@
 {
   "buildCommand": "yarn turbo build --filter=@gujuck/tap-garden-game",
   "outputDirectory": "apps/tap-garden-game/dist",
-  "installCommand": "corepack enable && yarn install --immutable",
+  "installCommand": "corepack yarn install --immutable",
   "framework": null
 }

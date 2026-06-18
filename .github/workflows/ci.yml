@@ -77,32 +77,28 @@ jobs:
 
       - name: Deploy run-game to Vercel
         if: steps.check_vercel.outputs.configured == 'true'
-        working-directory: apps/run-game
-        run: vercel --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel --prod --yes --local-config apps/run-game/vercel.json --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_RUN }}
 
       - name: Deploy pet-game to Vercel
         if: steps.check_vercel.outputs.configured == 'true'
-        working-directory: apps/pet-game
-        run: vercel --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel --prod --yes --local-config apps/pet-game/vercel.json --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_PET }}
 
       - name: Deploy tap-garden-game to Vercel
         if: steps.check_vercel.outputs.configured == 'true'
-        working-directory: apps/tap-garden-game
-        run: vercel --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel --prod --yes --local-config apps/tap-garden-game/vercel.json --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_TAP }}
 
       - name: Deploy strawberry-catch-game to Vercel
         if: steps.check_vercel.outputs.configured == 'true'
-        working-directory: apps/strawberry-catch-game
-        run: vercel --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel --prod --yes --local-config apps/strawberry-catch-game/vercel.json --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_STRAWBERRY }}
