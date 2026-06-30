@@ -1,0 +1,5 @@
+{
+  "installCommand": "corepack enable && yarn install",
+  "buildCommand": "turbo build --filter=@gujuck/pet-game",
+  "outputDirectory": "apps/pet-game/dist"
+}
