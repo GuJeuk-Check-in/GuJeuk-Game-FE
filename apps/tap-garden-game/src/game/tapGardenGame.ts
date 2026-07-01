@@ -1,3 +1,5 @@
+import { createLeaderboard, promptName, closeNameOverlays, type ScoreEntry } from './leaderboard'
+
 export function initGame(canvas: HTMLCanvasElement): () => void {
   const ctx = canvas.getContext('2d')!
 
@@ -33,7 +35,22 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
   let ruleColor = 0, ruleTimer = 0, bannerT = 0
   let shake = 0
   let feverActive = false, feverTimer = 0
-  let bestSolo = (() => { try { return parseInt(localStorage.getItem(LS_KEY) ?? '0', 10) || 0 } catch { return 0 } })()
+  const board = createLeaderboard('garden')
+  let topScores: ScoreEntry[] = []
+  let lastEntry: ScoreEntry | null = null   // 방금 등록한 기록 (랭킹에서 강조용)
+  // 기존 단일 최고점(LS_KEY)이 있으면 랭킹으로 한 번 이관한 뒤 상위 목록을 읽어온다.
+  ;(async () => {
+    try {
+      const legacy = parseInt(localStorage.getItem(LS_KEY) ?? '0', 10) || 0
+      if (legacy > 0) {
+        if ((await board.top(1)).length === 0) {
+          await board.submit({ name: '이전 기록', score: legacy, date: Date.now(), players: 1 })
+        }
+        localStorage.removeItem(LS_KEY)
+      }
+    } catch (_) {}
+    topScores = await board.top(10)
+  })()
   let uiButtons: { x: number; y: number; w: number; h: number; action: string; data?: number }[] = []
 
   // ── Audio ─────────────────────────────────────────────────────────────────
@@ -192,10 +209,45 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
   function gameOver() {
     state = 'over'
     for (const p of players) p.bestCombo = Math.max(p.bestCombo, p.combo)
-    if (playerCount === 1) {
-      const s = Math.floor(players[0].score)
-      if (s > bestSolo) { bestSolo = s; try { localStorage.setItem(LS_KEY, String(s)) } catch (_) {} }
+    void handleGameOver()
+  }
+
+  // 결과 화면에서 1등(혼자면 본인) 이름을 받아 랭킹에 등록한다.
+  async function handleGameOver() {
+    let win = players[0]
+    for (const p of players) if (Math.floor(p.score) > Math.floor(win.score)) win = p
+    const score = Math.floor(win.score)
+    lastEntry = null
+    if (score <= 0) return
+    const msg = playerCount === 1 ? '친구 이름이 뭐예요?' : '1등 친구의 이름은 뭐예요?'
+    const name = await promptName(msg)
+    if (state !== 'over') return          // 입력하는 사이 결과 화면을 벗어났으면 저장하지 않는다
+    if (!name) return
+    const entry: ScoreEntry = { name, score, date: Date.now(), players: playerCount }
+    lastEntry = entry
+    try { topScores = await board.submit(entry) }
+    catch (_) { topScores = await board.top(10) }
+  }
+
+  // 랭킹 목록을 세로로 그린다 (메뉴·결과 공용).
+  function drawBoard(cx: number, top: number, rowH: number, count: number, fontFrac: number) {
+    const list = topScores.slice(0, count)
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    if (list.length === 0) {
+      ctx.fillStyle = 'rgba(224,236,220,0.85)'
+      ctx.font = `${Math.floor(H * fontFrac)}px Jua, sans-serif`
+      ctx.fillText('아직 기록이 없어요 · 첫 주인공이 되어보세요!', cx, top)
+      return
     }
+    const medals = ['🥇', '🥈', '🥉']
+    list.forEach((e, i) => {
+      const y = top + i * rowH
+      const isNew = !!lastEntry && e.name === lastEntry.name && e.score === lastEntry.score && e.date === lastEntry.date
+      ctx.font = `bold ${Math.floor(H * fontFrac)}px Jua, sans-serif`
+      ctx.fillStyle = isNew ? '#FFF06A' : '#E8FFE0'
+      const rank = medals[i] ?? `${i + 1}.`
+      ctx.fillText(`${rank} ${e.name}   ${e.score}점${isNew ? '  ⭐' : ''}`, cx, y)
+    })
   }
 
   function burst(x: number, y: number, color: string, n: number, star: boolean) {
@@ -586,8 +638,11 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     const totalW = bw * 4 + gap * 3; let bx = (W - totalW) / 2
     for (let i = 0; i < 4; i++) { button(bx, H * 0.608, bw, bh, ['혼자', '2명', '3명', '4명'][i], CD[i], 'start', i + 1); bx += bw + gap }
 
-    ctx.fillStyle = '#FFD700'; ctx.font = `bold ${Math.floor(H * 0.040)}px Jua, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('🏆 최고 점수: ' + bestSolo, W / 2, H * 0.808)
+    // 랭킹은 버튼 실제 바닥에 앵커 (가로·세로 화면 모두 안전)
+    const boardTop = H * 0.608 + bh
+    ctx.fillStyle = '#FFD700'; ctx.font = `bold ${Math.floor(H * 0.038)}px Jua, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('🏆 랭킹 TOP 3', W / 2, boardTop + H * 0.06)
+    drawBoard(W / 2, boardTop + H * 0.115, H * 0.05, 3, 0.034)
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
   }
 
@@ -607,16 +662,18 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
       ctx.fillText((playerCount > 1 ? (o.i + 1) + 'P : ' : '') + o.s + '점  최고콤보 ' + o.bc + (o.s === best && playerCount > 1 ? '  🥇' : ''), W / 2, H * 0.26 + k * H * 0.08)
       ctx.restore()
     })
-    if (playerCount === 1) {
-      const isNew = Math.floor(players[0].score) >= bestSolo
-      ctx.fillStyle = '#FFD700'; ctx.font = `bold ${Math.floor(H * 0.040)}px Jua, sans-serif`
-      ctx.fillText((isNew ? '🎉 신기록! ' : '🏆 최고 점수: ') + bestSolo, W / 2, H * 0.655)
-    }
+    // 랭킹보드 — 방금 기록이 1위면 축하 문구
+    const isTop1 = !!lastEntry && topScores.length > 0 && topScores[0].date === lastEntry.date && topScores[0].score === lastEntry.score
+    ctx.fillStyle = isTop1 ? '#FFF06A' : '#FFD700'
+    ctx.font = `bold ${Math.floor(H * 0.044)}px Jua, sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(isTop1 ? '🎉 랭킹 1위!' : '🏆 랭킹', W / 2, H * 0.575)
+    drawBoard(W / 2, H * 0.63, H * 0.052, 4, 0.036)
     uiButtons = []
     const bw = Math.min(W * 0.30, H * 0.32), bh = bw * 0.38, gap = W * 0.03
     const totalW = bw * 2 + gap; let bx = (W - totalW) / 2
-    button(bx, H * 0.760, bw, bh, '또 하기 ▶', '#2DBF8A', 'again'); bx += bw + gap
-    button(bx, H * 0.760, bw, bh, '처음으로',   '#4A9FE0', 'menu')
+    button(bx, H * 0.88, bw, bh, '또 하기 ▶', '#2DBF8A', 'again'); bx += bw + gap
+    button(bx, H * 0.88, bw, bh, '처음으로',   '#4A9FE0', 'menu')
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
   }
 
@@ -723,5 +780,6 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     cancelAnimationFrame(animId)
     canvas.removeEventListener('pointerdown', handlePointerDown)
     window.removeEventListener('resize', resize)
+    closeNameOverlays()
   }
 }
