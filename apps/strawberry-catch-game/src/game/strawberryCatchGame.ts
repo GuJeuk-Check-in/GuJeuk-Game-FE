@@ -508,7 +508,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
     ctx.save(); ctx.shadowColor = '#FF6B8A'; ctx.shadowBlur = 28
     ctx.strokeStyle = 'rgba(120,40,60,0.5)'; ctx.lineWidth = H * 0.008
     ctx.font = `bold ${Math.floor(H * 0.11)}px Jua, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillStyle = '#FFEAF0'; ctx.strokeText('🍓 딸기 따기', W / 2, H * 0.20 + bob); ctx.fillText('🍓 딸기 따기', W / 2, H * 0.20 + bob)
+    ctx.fillStyle = '#FFEAF0'; ctx.strokeText('🍓 과일 게임', W / 2, H * 0.20 + bob); ctx.fillText('🍓 과일 게임', W / 2, H * 0.20 + bob)
     ctx.restore()
 
     const info = [
