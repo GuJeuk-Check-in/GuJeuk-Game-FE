@@ -1,0 +1,6 @@
+{
+  "buildCommand": "yarn turbo build --filter=@gujuck/home",
+  "outputDirectory": "apps/home/dist",
+  "installCommand": "corepack yarn install --immutable",
+  "framework": null
+}

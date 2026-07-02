@@ -19,6 +19,7 @@ const PROJECTS = {
   prj_SVMgzL65DntMMxAPviz5rBxaoF4i: { pkg: '@gujuck/run-game', dir: 'apps/run-game' },
   prj_TuTAyYAz3qeJotEBg7Qjbuo05PXj: { pkg: '@gujuck/tap-garden-game', dir: 'apps/tap-garden-game' },
   prj_fbYj0MQw3DgEVXbRWLkAfUS1CulG: { pkg: '@gujuck/strawberry-catch-game', dir: 'apps/strawberry-catch-game' },
+  prj_EwrMbObQHsAfQp8NkGitWglD1Ije: { pkg: '@gujuck/home', dir: 'apps/home' },
 }
 
 const projectId = process.env.VERCEL_PROJECT_ID
