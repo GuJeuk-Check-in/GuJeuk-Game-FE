@@ -370,6 +370,20 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@gujuck/home@workspace:apps/home":
+  version: 0.0.0-use.local
+  resolution: "@gujuck/home@workspace:apps/home"
+  dependencies:
+    "@types/react": "npm:^18.3.5"
+    "@types/react-dom": "npm:^18.3.0"
+    "@vitejs/plugin-react": "npm:^4.3.1"
+    react: "npm:^18.3.1"
+    react-dom: "npm:^18.3.1"
+    typescript: "npm:^5.5.3"
+    vite: "npm:^5.4.2"
+  languageName: unknown
+  linkType: soft
+
 "@gujuck/pet-game@workspace:apps/pet-game":
   version: 0.0.0-use.local
   resolution: "@gujuck/pet-game@workspace:apps/pet-game"
