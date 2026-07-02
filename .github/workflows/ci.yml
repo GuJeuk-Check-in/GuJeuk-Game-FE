@@ -102,3 +102,10 @@ jobs:
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_STRAWBERRY }}
+
+      - name: Deploy home to Vercel
+        if: steps.check_vercel.outputs.configured == 'true'
+        run: vercel --prod --yes --local-config apps/home/vercel.json --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_HOME }}
