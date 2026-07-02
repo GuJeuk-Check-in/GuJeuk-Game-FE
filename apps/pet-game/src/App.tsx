@@ -59,7 +59,6 @@ export default function App() {
           <div id="propLayer"></div>
           <div id="night"></div>
           <div id="petc"><div id="bubble"></div><div id="petface"></div></div>
-          <div id="toast"></div>
         </div>
         <div id="stats">
           <div className="stat"><span className="ic">🍖</span><span className="lab" id="lbFeed">배고픔</span><span className="tk"><span className="fl" id="fHunger"></span></span><span className="pc" id="pHunger">0</span></div>
@@ -101,6 +100,8 @@ export default function App() {
           <button className="menubtn danger" id="resetBtn">🗑️ 처음부터 다시 시작</button>
         </div>
       </div></div>
+
+      <div id="toast"></div>
     </div>
   )
 }

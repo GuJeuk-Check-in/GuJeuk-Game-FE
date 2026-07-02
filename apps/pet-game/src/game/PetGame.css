@@ -139,6 +139,6 @@ header{display:flex;align-items:center;gap:10px;padding:12px 14px 10px;border-bo
 .menubtn.danger{color:var(--bad);border-color:#F2D4C9;}
 .ssub{font-size:12px;color:var(--soft);margin-bottom:12px;}
 
-#toast{position:absolute;bottom:90px;left:50%;transform:translateX(-50%) translateY(8px);z-index:35;background:rgba(74,59,51,.94);color:#fff;font-size:12.5px;font-weight:600;padding:9px 15px;border-radius:999px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;white-space:nowrap;}
+#toast{position:absolute;bottom:150px;left:50%;transform:translateX(-50%) translateY(8px);z-index:40;max-width:82%;background:rgba(74,59,51,.94);color:#fff;font-size:12.5px;font-weight:600;padding:9px 15px;border-radius:999px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 @media (prefers-reduced-motion:reduce){#petface.walk,#petface.breathe,.prop{animation:none;}}
