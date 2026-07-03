@@ -211,12 +211,15 @@ export function initGame(): () => void {
     moving=false;face.classList.remove('walk');mode='action'
     if(t==='sleep'){fxEl('💤');setTimeout(()=>{mode='idle';speak('sleep')},700)}
     else{hop();fxEl(t==='feed'?'🍖':t==='play'?'🎉':'✨');speak(t);setTimeout(()=>{if(mode==='action')mode='idle'},650)}
+    // 포인트 차감은 확정된 값이라 서버 응답을 기다리지 않고 먼저 반영한다 (체감 지연 제거).
+    // 실패하면 아래 catch에서 되돌린다.
+    state.points=Math.max(0,state.points-a.c);render()
     try {
       const res=await api<any>('POST','/pets/me/actions',{action:t})
       state.points=res.points;state.hunger=res.stats.hunger;state.happy=res.stats.happy;state.clean=res.stats.clean;state.energy=res.stats.energy;state.xp=res.xp
       if(res.stage>state.stage){state.stage=res.stage;if(face){setSprite();placePet();fxEl('✨');setTimeout(()=>speak('growth',3600),250)}}
       render()
-    } catch(err: any){toast(err.message||'오류가 발생했어요')} finally{btn.disabled=false}
+    } catch(err: any){state.points+=a.c;render();toast(err.message||'오류가 발생했어요')} finally{btn.disabled=false}
   }
   function petClick() {
     if(state.stage===0){state.happy=clamp(state.happy+1);hop();fxEl('💗');bub(isPlant(state.species)?'쪼옥... (싹이 움직여요)':'콩콩... (안에서 소리가)',2400);render();saveSoon();return}

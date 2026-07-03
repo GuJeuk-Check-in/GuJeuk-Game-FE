@@ -117,9 +117,10 @@ function ensureStyles(): void {
   stylesInjected = true
   const style = document.createElement('style')
   style.textContent = `
-.gj-name-overlay{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;
+.gj-name-overlay{position:fixed;inset:0;z-index:99999;display:flex;align-items:flex-start;justify-content:center;
   background:rgba(15,10,35,0.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
-  font-family:'Jua','Apple SD Gothic Neo',sans-serif;padding:24px;box-sizing:border-box;animation:gj-fade .18s ease}
+  font-family:'Jua','Apple SD Gothic Neo',sans-serif;padding:24px;padding-top:10vh;box-sizing:border-box;
+  overflow-y:auto;animation:gj-fade .18s ease}
 .gj-name-card{width:min(92vw,380px);background:linear-gradient(160deg,#ffffff 0%,#ffeef5 100%);border-radius:24px;
   padding:26px 22px 22px;box-shadow:0 18px 50px rgba(0,0,0,.35);text-align:center;
   animation:gj-pop .22s cubic-bezier(.2,1.3,.4,1)}
