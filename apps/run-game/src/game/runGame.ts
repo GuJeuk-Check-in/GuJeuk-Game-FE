@@ -8,6 +8,7 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
   const CHAR_SHADOW = ['#E8507A', '#4BA6D4', '#D4A520', '#4CAF50']
   const LS_KEY = 'gujuck_run_best'
   const NDASH = 9
+  const MAX_CANVAS_DIM = 4096
 
   // ── State ─────────────────────────────────────────────────────────────────
   let W = 0, H = 0, dpr = 1, horizonY = 0, nearY = 0
@@ -134,6 +135,9 @@ export function initGame(canvas: HTMLCanvasElement): () => void {
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2)
     W = window.innerWidth; H = window.innerHeight
+    // 스마트 TV 등 내장 브라우저는 캔버스 최대 크기가 낮아, 큰 화면에서 이 한도를
+    // 넘으면 브라우저가 에러 없이 캔버스를 빈 상태로 만들어버린다. dpr을 낮춰 방지.
+    dpr = Math.min(dpr, MAX_CANVAS_DIM / Math.max(W, H))
     canvas.width = Math.floor(W * dpr); canvas.height = Math.floor(H * dpr)
     canvas.style.width = W + 'px'; canvas.style.height = H + 'px'
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)

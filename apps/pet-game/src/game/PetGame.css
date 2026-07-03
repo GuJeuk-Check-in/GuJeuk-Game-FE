@@ -8,8 +8,8 @@
 html,body{height:100%;}
 body{font-family:var(--font);color:var(--ink);background:#DCC9B4;display:flex;align-items:center;justify-content:center;min-height:100dvh;}
 #root{display:contents;}
-#phone{width:100%;max-width:430px;height:100dvh;max-height:880px;background:var(--card);position:relative;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.18);}
-@media(min-width:460px){#phone{border-radius:30px;height:min(880px,96dvh);}}
+#phone{width:100%;max-width:430px;height:100vh;height:100dvh;max-height:880px;background:var(--card);position:relative;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.18);}
+@media(min-width:460px){#phone{border-radius:30px;height:min(880px,96vh);height:min(880px,96dvh);}}
 .screen{position:absolute;inset:0;display:none;flex-direction:column;background:var(--card);}
 .screen.on{display:flex;}
 
