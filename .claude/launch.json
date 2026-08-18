@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "home",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["workspace", "@gujuck/home", "dev"],
+      "port": 5170
+    },
+    {
+      "name": "tic-tac-toe",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["workspace", "@gujuck/tic-tac-toe", "dev"],
+      "port": 5171
+    },
+    {
+      "name": "alkkagi",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["workspace", "@gujuck/alkkagi", "dev"],
+      "port": 5172
+    },
+    {
+      "name": "archery",
+      "runtimeExecutable": "yarn",
+      "runtimeArgs": ["workspace", "@gujuck/archery", "dev"],
+      "port": 5173
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "buildCommand": "yarn turbo build --filter=@gujuck/alkkagi",
+  "outputDirectory": "apps/alkkagi/dist",
+  "installCommand": "corepack yarn install --immutable",
+  "framework": null
+}

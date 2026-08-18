@@ -1,0 +1,4 @@
+{
+  "extends": "@gujuck/tsconfig/base.json",
+  "include": ["src"]
+}

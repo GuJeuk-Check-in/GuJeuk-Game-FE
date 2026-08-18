@@ -1,5 +1,0 @@
-{
-  "installCommand": "corepack enable && yarn install",
-  "buildCommand": "node scripts/vercel-build.mjs",
-  "outputDirectory": "dist"
-}

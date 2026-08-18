@@ -1,6 +1,0 @@
-{
-  "buildCommand": "yarn turbo build --filter=@gujuck/strawberry-catch-game",
-  "outputDirectory": "apps/strawberry-catch-game/dist",
-  "installCommand": "corepack yarn install --immutable",
-  "framework": null
-}

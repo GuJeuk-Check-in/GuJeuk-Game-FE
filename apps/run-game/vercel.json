@@ -1,6 +1,0 @@
-{
-  "buildCommand": "yarn turbo build --filter=@gujuck/run-game",
-  "outputDirectory": "apps/run-game/dist",
-  "installCommand": "corepack yarn install --immutable",
-  "framework": null
-}

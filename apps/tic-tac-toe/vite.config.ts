@@ -1,3 +1,3 @@
 import { createAppConfig } from '@gujuck/vite-config'
 
-export default createAppConfig({ port: 5170 })
+export default createAppConfig({ port: 5171 })

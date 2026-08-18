@@ -1,0 +1,38 @@
+.ar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ar-title {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.ar-meta {
+  display: flex;
+  gap: 6px;
+}
+
+.ar-chip {
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--gj-surface-2);
+  border: 1px solid var(--gj-border);
+}
+
+.ar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ar-status {
+  color: var(--gj-text-dim);
+  font-size: 14px;
+  font-weight: 600;
+}

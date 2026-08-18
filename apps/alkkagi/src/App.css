@@ -1,0 +1,47 @@
+.ak-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ak-title {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.ak-counts {
+  display: flex;
+  gap: 8px;
+}
+
+.ak-chip {
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1px solid var(--gj-border);
+}
+
+.ak-chip--black {
+  background: #1b1b1f;
+  color: #d9d9e2;
+}
+
+.ak-chip--white {
+  background: #f4f4f6;
+  color: #23252c;
+}
+
+.ak-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ak-status {
+  color: var(--gj-text-dim);
+  font-size: 14px;
+  font-weight: 600;
+}

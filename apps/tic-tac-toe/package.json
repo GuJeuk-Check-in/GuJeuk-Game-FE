@@ -1,5 +1,5 @@
 {
-  "name": "@gujuck/home",
+  "name": "@gujuck/tic-tac-toe",
   "version": "0.1.0",
   "private": true,
   "type": "module",

@@ -1,0 +1,84 @@
+.hm-header {
+  text-align: center;
+}
+
+.hm-logo {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.hm-tagline {
+  margin-top: 4px;
+  color: var(--gj-text-dim);
+  font-size: 13px;
+}
+
+.hm-body {
+  height: 100%;
+  overflow-y: auto;
+  padding: 8px 16px 24px;
+}
+
+.hm-list {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 440px;
+}
+
+.hm-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: var(--gj-radius);
+  background: var(--gj-surface);
+  border: 1px solid var(--gj-border);
+  color: inherit;
+  text-decoration: none;
+  touch-action: manipulation;
+}
+
+.hm-card:hover {
+  background: var(--gj-surface-2);
+}
+
+.hm-card.is-off {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.hm-card.is-off:hover {
+  background: var(--gj-surface);
+}
+
+.hm-card__emoji {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.hm-card__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hm-card__name {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.hm-card__desc {
+  display: block;
+  margin-top: 3px;
+  color: var(--gj-text-dim);
+  font-size: 13px;
+}
+
+.hm-card__arrow {
+  color: var(--gj-text-dim);
+  font-size: 22px;
+}

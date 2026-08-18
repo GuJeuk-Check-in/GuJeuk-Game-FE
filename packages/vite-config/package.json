@@ -1,0 +1,25 @@
+{
+  "name": "@gujuck/vite-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.mjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.mjs"
+    }
+  },
+  "dependencies": {
+    "@vitejs/plugin-legacy": "^5.4.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "terser": "^5.36.0"
+  },
+  "peerDependencies": {
+    "vite": "^5.4.11"
+  },
+  "devDependencies": {
+    "vite": "^5.4.11"
+  }
+}

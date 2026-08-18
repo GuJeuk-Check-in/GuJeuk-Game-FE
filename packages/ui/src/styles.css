@@ -1,0 +1,122 @@
+/* 모든 앱이 import 하는 공통 토큰과 셸 스타일. */
+
+:root {
+  --gj-bg: #0f1420;
+  --gj-surface: #1a2130;
+  --gj-surface-2: #232c3d;
+  --gj-text: #eef2f9;
+  --gj-text-dim: #9aa6bd;
+  --gj-accent: #4d8dff;
+  --gj-accent-ink: #ffffff;
+  --gj-border: #2c3648;
+  --gj-radius: 14px;
+  --gj-gap: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--gj-bg);
+  color: var(--gj-text);
+  font-family: system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* 게임 화면이 통째로 스크롤되면 조작이 방해된다. */
+  overscroll-behavior: none;
+}
+
+.gj-shell {
+  display: flex;
+  flex-direction: column;
+  /* 100vh는 모바일 주소창을 포함해 계산되어 하단이 잘린다. dvh를 쓴다. */
+  height: 100dvh;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+.gj-shell__header,
+.gj-shell__footer {
+  flex: 0 0 auto;
+  padding: var(--gj-gap);
+}
+
+.gj-shell__body {
+  /* min-height:0 이 없으면 flex 자식이 내용 크기만큼 밀려 캔버스가 넘친다. */
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+.gj-btn {
+  appearance: none;
+  border: 1px solid var(--gj-border);
+  background: var(--gj-surface-2);
+  color: var(--gj-text);
+  border-radius: var(--gj-radius);
+  padding: 12px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  /* 탭 후 300ms 지연과 더블탭 확대를 막는다. */
+  touch-action: manipulation;
+}
+
+.gj-btn--primary {
+  background: var(--gj-accent);
+  border-color: var(--gj-accent);
+  color: var(--gj-accent-ink);
+}
+
+.gj-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.gj-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 11, 18, 0.72);
+  padding: 20px;
+  z-index: 10;
+}
+
+.gj-overlay__sheet {
+  width: 100%;
+  max-width: 340px;
+  background: var(--gj-surface);
+  border: 1px solid var(--gj-border);
+  border-radius: 20px;
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.gj-overlay__title {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.gj-overlay__desc {
+  margin-top: 8px;
+  color: var(--gj-text-dim);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.gj-overlay__actions {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

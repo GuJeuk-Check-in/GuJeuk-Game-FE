@@ -1,0 +1,77 @@
+.ttt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ttt-title {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.ttt-modes {
+  display: flex;
+  gap: 6px;
+}
+
+.ttt-mode {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.ttt-mode.is-on {
+  background: var(--gj-accent);
+  border-color: var(--gj-accent);
+  color: var(--gj-accent-ink);
+}
+
+.ttt-stage {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.ttt-board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  /* 세로가 짧은 화면에서도 판이 잘리지 않도록 가로·세로 중 작은 쪽을 따른다. */
+  width: min(100%, 60vh, 380px);
+  aspect-ratio: 1;
+}
+
+.ttt-cell {
+  appearance: none;
+  border: 1px solid var(--gj-border);
+  background: var(--gj-surface);
+  color: var(--gj-text);
+  border-radius: var(--gj-radius);
+  font-size: clamp(32px, 12vw, 56px);
+  font-weight: 800;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.12s ease;
+}
+
+.ttt-cell:disabled {
+  cursor: default;
+}
+
+.ttt-cell:not(:disabled):hover {
+  background: var(--gj-surface-2);
+}
+
+.ttt-cell.is-win {
+  background: var(--gj-accent);
+  border-color: var(--gj-accent);
+  color: var(--gj-accent-ink);
+}
+
+.ttt-status {
+  text-align: center;
+  color: var(--gj-text-dim);
+  font-size: 14px;
+  font-weight: 600;
+}
