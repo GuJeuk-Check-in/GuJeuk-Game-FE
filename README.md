@@ -91,3 +91,8 @@ yarn create:app curling "컬링" --canvas
 - `VERCEL_PROJECT_ID_HOME` / `_TIC_TAC_TOE` / `_ALKKAGI` / `_ARCHERY`
 
 시크릿이 없으면 해당 앱의 배포 스텝은 경고만 남기고 넘어간다.
+
+앱별 `vercel.json`의 명령은 **반드시 `corepack yarn`으로 시작한다.** Vercel 빌드
+이미지에는 Yarn 1.22가 기본으로 깔려 있어 맨 `yarn`을 쓰면 Yarn 1이 잡히고,
+`packageManager` 필드를 모르는 Yarn 1은 `yarn turbo`를 "turbo 스크립트 실행"으로
+해석해 즉시 죽는다.

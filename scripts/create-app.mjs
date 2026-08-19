@@ -212,7 +212,11 @@ function vercelJson() {
   return (
     JSON.stringify(
       {
-        buildCommand: `yarn turbo build --filter=@gujuck/${slug}`,
+        // 반드시 corepack을 거친다. Vercel 빌드 이미지에는 Yarn 1.22가 기본으로
+        // 깔려 있어서 맨 `yarn`을 쓰면 Yarn 1이 잡히고, packageManager 필드를
+        // 모르는 Yarn 1은 `yarn turbo`를 "turbo 스크립트 실행"으로 해석해
+        // Command "turbo" not found 로 즉시 죽는다. (실제로 겪은 배포 실패)
+        buildCommand: `corepack yarn turbo build --filter=@gujuck/${slug}`,
         outputDirectory: `apps/${slug}/dist`,
         installCommand: 'corepack yarn install --immutable',
         framework: null,
