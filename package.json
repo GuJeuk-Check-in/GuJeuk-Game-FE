@@ -9,11 +9,21 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "preview": "turbo preview",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "create:app": "node scripts/create-app.mjs"
   },
   "devDependencies": {
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
     "turbo": "^2.3.0",
     "typescript": "^5.6.3"
   },
-  "packageManager": "yarn@4.9.2"
+  "packageManager": "yarn@4.9.2",
+  "engines": {
+    "node": ">=20.19",
+    "yarn": ">=4.9"
+  }
 }

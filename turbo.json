@@ -15,6 +15,9 @@
     "preview": {
       "dependsOn": ["build"],
       "cache": false
+    },
+    "lint": {
+      "dependsOn": ["^build"]
     }
   }
 }

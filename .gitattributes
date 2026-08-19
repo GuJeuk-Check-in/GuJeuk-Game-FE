@@ -1,0 +1,13 @@
+# 윈도우/맥/리눅스가 섞여도 저장소 안의 줄바꿈은 항상 LF로 통일한다.
+# 이게 없으면 CRLF로 저장된 파일 때문에 diff 전체가 바뀐 것처럼 보이고,
+# 셸 스크립트는 리눅스 CI에서 실행 자체가 깨진다.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary

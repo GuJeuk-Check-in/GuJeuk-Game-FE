@@ -79,7 +79,9 @@ export default function App() {
           </div>
         </div>
       }
-      footer={<div className="ttt-status">{statusText(mode, turn, outcome.winner, outcome.draw)}</div>}
+      footer={
+        <div className="ttt-status">{statusText(mode, turn, outcome.winner, outcome.draw)}</div>
+      }
     >
       <div className="ttt-stage">
         <div className="ttt-board" role="grid" aria-label="틱택토 판">

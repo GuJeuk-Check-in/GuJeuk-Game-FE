@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@gujuck/ui": "workspace:*",
@@ -15,10 +16,12 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@gujuck/eslint-config": "workspace:*",
     "@gujuck/tsconfig": "workspace:*",
     "@gujuck/vite-config": "workspace:*",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "eslint": "^9.17.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.11"
   }

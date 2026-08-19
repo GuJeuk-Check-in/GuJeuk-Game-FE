@@ -30,6 +30,15 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      # 포맷은 사람이 리뷰에서 지적할 일이 아니다. 여기서 걸러낸다.
+      - name: Format check
+        run: yarn format:check
+
+      # 계층 간 import 규칙(game-core에 React·물리엔진 금지 등)이 여기서 강제된다.
+      # 규칙 정의는 packages/eslint-config/index.mjs 한 곳에 있다.
+      - name: Lint
+        run: yarn turbo lint
+
       # 앱은 build 안에서 tsc --noEmit을 먼저 돌리지만, 앱이 import 하지 않는
       # 공유 패키지(@gujuck/api 등)는 그 그래프에 안 잡힌다. 따로 검사한다.
       - name: Typecheck

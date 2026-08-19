@@ -27,7 +27,12 @@ body,
 body {
   background: var(--gj-bg);
   color: var(--gj-text);
-  font-family: system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Apple SD Gothic Neo',
+    'Malgun Gothic',
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   /* 게임 화면이 통째로 스크롤되면 조작이 방해된다. */
   overscroll-behavior: none;
