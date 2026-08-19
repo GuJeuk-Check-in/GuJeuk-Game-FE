@@ -60,11 +60,11 @@ error  'matter-js' import is restricted from being used by a pattern.
 앱은 각자 자기 Vite 빌드로 번들되고 각자 배포된다. 두 번들은 런타임에 만나지
 않으므로 충돌할 지점 자체가 없다. 번들 크기가 이를 그대로 보여준다.
 
-| 앱          | 렌더링          | 번들   | gzip    |
-| ----------- | --------------- | ------ | ------- |
-| tic-tac-toe | React DOM       | 145 KB | 46.9 KB |
-| alkkagi     | Canvas + matter | 236 KB | 75.3 KB |
-| archery     | Canvas + matter | 236 KB | 75.5 KB |
+| 앱          | 렌더링          | 번들      | gzip    |
+| ----------- | --------------- | --------- | ------- |
+| tic-tac-toe | React DOM       | 144.65 KB | 46.8 KB |
+| alkkagi     | Canvas + matter | 235.92 KB | 75.3 KB |
+| archery     | Canvas + matter | 236.37 KB | 75.5 KB |
 
 matter.js는 틱택토 번들에 1바이트도 들어가지 않는다.
 

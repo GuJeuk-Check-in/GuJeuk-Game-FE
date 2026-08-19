@@ -5,13 +5,14 @@
 
 - [아키텍처](docs/ARCHITECTURE.md) — 계층 구조와 의존성 규칙, 그렇게 한 이유
 - [컨벤션](docs/CONVENTIONS.md) — 코드 스타일, 커밋, 새 서비스 추가 절차
+- [게임 앱 표준 골격](apps/tic-tac-toe/README.md) — 새 게임을 만들기 전에 읽을 것
 
 ## 구조
 
 ```
 apps/
   home/            게임 허브 (React)
-  tic-tac-toe/     React DOM 게임
+  tic-tac-toe/     React DOM 게임 — 게임 앱 표준 골격 (규칙은 비어 있음)
   alkkagi/         Canvas 2D + matter.js
   archery/         Canvas 2D + matter.js
 packages/

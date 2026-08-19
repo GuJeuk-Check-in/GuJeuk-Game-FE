@@ -1,60 +1,22 @@
-import { useCallback, useEffect, useState } from 'react'
 import { GameShell, ResultOverlay } from '@gujuck/ui'
-import { EMPTY_BOARD, bestMove, evaluate, nextMark } from './game/board'
-import type { Board, Mark } from './game/board'
+import { AI, HUMAN, useGame } from './game/useGame'
+import type { Mark, Mode } from './game/types'
 import './App.css'
 
-type Mode = 'solo' | 'duo'
-
-const HUMAN: Mark = 'X'
-const AI: Mark = 'O'
-
+/**
+ * 화면.
+ *
+ * ─── 이 파일이 지켜야 하는 것 ────────────────────────────────────────────
+ * · 게임 규칙을 몰라야 한다. 판정도 수 선택도 여기서 하지 않는다.
+ * · 화면 골격은 @gujuck/ui의 GameShell을 쓴다. 100dvh·safe-area 처리가
+ *   거기 들어 있어 노치 기기에서 상하단이 잘리지 않는다.
+ * · 결과 표시는 ResultOverlay를 쓴다. 게임마다 모달을 새로 만들지 않는다.
+ * · CSS 클래스는 앱 접두사(ttt-)를 붙인다. 공통 UI의 gj- 를 덮어쓰지 않기 위함.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
 export default function App() {
-  const [mode, setMode] = useState<Mode>('solo')
-  const [board, setBoard] = useState<Board>(EMPTY_BOARD)
-  const [turn, setTurn] = useState<Mark>('X')
-
-  const outcome = evaluate(board)
-  const finished = outcome.winner !== null || outcome.draw
-
-  const reset = useCallback(() => {
-    setBoard(EMPTY_BOARD)
-    setTurn('X')
-  }, [])
-
-  const play = useCallback((index: number, mark: Mark) => {
-    setBoard((prev) => {
-      if (prev[index] !== null) return prev
-      const next = prev.slice()
-      next[index] = mark
-      return next
-    })
-    setTurn(nextMark(mark))
-  }, [])
-
-  // AI 차례가 되면 한 박자 쉬고 둔다. 즉시 두면 사람이 자기 수를 눈으로
-  // 확인하기 전에 판이 바뀌어 무슨 일이 일어났는지 알기 어렵다.
-  useEffect(() => {
-    if (mode !== 'solo' || finished || turn !== AI) return
-
-    const timer = window.setTimeout(() => {
-      const move = bestMove(board, AI)
-      if (move >= 0) play(move, AI)
-    }, 320)
-
-    return () => window.clearTimeout(timer)
-  }, [mode, finished, turn, board, play])
-
-  const handleCell = (index: number) => {
-    if (finished || board[index] !== null) return
-    if (mode === 'solo' && turn !== HUMAN) return
-    play(index, turn)
-  }
-
-  const changeMode = (next: Mode) => {
-    setMode(next)
-    reset()
-  }
+  const game = useGame()
+  const { board, turn, mode, outcome, finished } = game
 
   return (
     <GameShell
@@ -62,20 +24,8 @@ export default function App() {
         <div className="ttt-header">
           <div className="ttt-title">틱택토</div>
           <div className="ttt-modes">
-            <button
-              type="button"
-              className={`gj-btn ttt-mode ${mode === 'solo' ? 'is-on' : ''}`}
-              onClick={() => changeMode('solo')}
-            >
-              AI 대전
-            </button>
-            <button
-              type="button"
-              className={`gj-btn ttt-mode ${mode === 'duo' ? 'is-on' : ''}`}
-              onClick={() => changeMode('duo')}
-            >
-              2인
-            </button>
+            <ModeButton current={mode} value="solo" label="AI 대전" onSelect={game.changeMode} />
+            <ModeButton current={mode} value="duo" label="2인" onSelect={game.changeMode} />
           </div>
         </div>
       }
@@ -91,7 +41,7 @@ export default function App() {
               type="button"
               role="gridcell"
               className={`ttt-cell ${outcome.line?.includes(index) ? 'is-win' : ''}`}
-              onClick={() => handleCell(index)}
+              onClick={() => game.place(index)}
               disabled={finished || cell !== null}
               aria-label={`${index + 1}번 칸 ${cell ?? '빈 칸'}`}
             >
@@ -106,9 +56,28 @@ export default function App() {
         title={resultTitle(mode, outcome.winner, outcome.draw)}
         description={outcome.draw ? '더 둘 곳이 없어요.' : undefined}
         primaryLabel="다시 하기"
-        onPrimary={reset}
+        onPrimary={game.reset}
       />
     </GameShell>
+  )
+}
+
+interface ModeButtonProps {
+  current: Mode
+  value: Mode
+  label: string
+  onSelect: (mode: Mode) => void
+}
+
+function ModeButton({ current, value, label, onSelect }: ModeButtonProps) {
+  return (
+    <button
+      type="button"
+      className={`gj-btn ttt-mode ${current === value ? 'is-on' : ''}`}
+      onClick={() => onSelect(value)}
+    >
+      {label}
+    </button>
   )
 }
 
@@ -121,6 +90,6 @@ function statusText(mode: Mode, turn: Mark, winner: Mark | null, draw: boolean):
 
 function resultTitle(mode: Mode, winner: Mark | null, draw: boolean): string {
   if (draw) return '무승부'
-  if (mode === 'solo') return winner === HUMAN ? '이겼어요! 🎉' : '졌어요 😢'
+  if (mode === 'solo') return winner === AI ? '졌어요 😢' : '이겼어요! 🎉'
   return `${winner} 승리! 🎉`
 }
