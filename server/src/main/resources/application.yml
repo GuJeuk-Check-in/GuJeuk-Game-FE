@@ -1,0 +1,9 @@
+server:
+  # 프론트 개발 서버가 5170~5173을 쓰므로 겹치지 않는 포트를 쓴다.
+  port: 8090
+
+spring:
+  application:
+    name: gujuck-game-server
+  jackson:
+    time-zone: Asia/Seoul
