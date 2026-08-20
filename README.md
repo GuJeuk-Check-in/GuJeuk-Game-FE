@@ -22,7 +22,12 @@ packages/
   eslint-config/   공유 ESLint 설정 + 계층 간 import 규칙
   vite-config/     공유 Vite 설정
   tsconfig/        공유 TypeScript 설정
+server/            게임 백엔드 (Spring Boot, Gradle) — 독립 빌드 단위
 ```
+
+클라이언트와 서버가 한 저장소에 있다. 게임 하나를 만들 때 화면과 API를
+같은 PR에서 함께 바꾸기 위해서다. 다만 빌드 도구가 다르므로 `server/`는
+Yarn 워크스페이스에 포함하지 않고 자체 Gradle 프로젝트로 둔다.
 
 ## 시작하기
 
@@ -38,6 +43,13 @@ yarn dev
 
 ```bash
 yarn workspace @gujuck/alkkagi dev
+```
+
+서버는 별도로 띄운다. 포트는 8090으로 고정되어 있어 프론트 개발 서버와
+겹치지 않는다.
+
+```bash
+cd server && ./gradlew bootRun
 ```
 
 포트는 home 5170, tic-tac-toe 5171, alkkagi 5172, archery 5173으로 고정되어 있어

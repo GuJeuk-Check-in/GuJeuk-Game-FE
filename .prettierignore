@@ -3,3 +3,4 @@ node_modules
 .turbo
 .yarn
 yarn.lock
+server
