@@ -114,12 +114,24 @@ export class AlkkagiGame {
   private placement: PointerPoint[] = []
   private placingIndex = -1
 
+  /**
+   * 화면을 180° 돌려 그릴지.
+   *
+   * 내 진영은 언제나 화면 아래여야 한다. 세계 좌표에서 흑은 아래, 백은 위에
+   * 고정돼 있으므로 백을 잡은 쪽만 뒤집어 본다.
+   *
+   * **뒤집는 것은 보이는 것뿐이다.** 물리 세계를 뒤집으면 두 클라의 시뮬레이션이
+   * 달라져 락스텝이 깨진다. 좌표 변환(toWorld)과 그리기에만 적용한다.
+   */
+  private readonly flipped: boolean
+
   private dragging: Stone | null = null
   private dragPoint: PointerPoint | null = null
 
   constructor(options: AlkkagiGameOptions) {
     this.stage = options.stage
     this.myColor = options.myColor
+    this.flipped = options.myColor === 'white'
     this.onChange = options.onChange
     this.onFlickRequest = options.onFlickRequest
     this.onSettled = options.onSettled
@@ -455,10 +467,13 @@ export class AlkkagiGame {
 
   // ---- 좌표 변환 --------------------------------------------------------
 
-  /** 화면(CSS px) → 물리 세계 좌표. */
+  /** 화면(CSS px) → 물리 세계 좌표. 뒤집어 보고 있으면 되돌려 준다. */
   private toWorld(point: PointerPoint): PointerPoint {
     const { scale, offsetX, offsetY } = this.viewport()
-    return { x: (point.x - offsetX) / scale, y: (point.y - offsetY) / scale }
+    const x = (point.x - offsetX) / scale
+    const y = (point.y - offsetY) / scale
+
+    return this.flipped ? { x: BOARD - x, y: BOARD - y } : { x, y }
   }
 
   /**
@@ -487,6 +502,12 @@ export class AlkkagiGame {
     ctx.save()
     ctx.translate(offsetX, offsetY)
     ctx.scale(scale, scale)
+
+    // 내 진영을 아래로 내린다. 판을 통째로 반 바퀴 돌리는 것과 같다.
+    if (this.flipped) {
+      ctx.translate(BOARD, BOARD)
+      ctx.rotate(Math.PI)
+    }
 
     this.renderBoard(ctx)
 
