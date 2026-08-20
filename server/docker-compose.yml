@@ -1,0 +1,29 @@
+# 로컬 개발용 MySQL. 운영 배포는 아직 없다.
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: gujuck-game-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: gujuck_game
+      MYSQL_USER: game
+      MYSQL_PASSWORD: game
+      MYSQL_ROOT_PASSWORD: root
+      TZ: Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+09:00
+    ports:
+      - '13306:3306'
+    volumes:
+      - game_mysql:/var/lib/mysql
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -proot --silent']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  game_mysql:
+    name: gujuck-game-mysql-data

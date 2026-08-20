@@ -1391,6 +1391,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@gujuck/alkkagi@workspace:apps/alkkagi"
   dependencies:
+    "@gujuck/api": "workspace:*"
     "@gujuck/eslint-config": "workspace:*"
     "@gujuck/game-core": "workspace:*"
     "@gujuck/tsconfig": "workspace:*"
@@ -1408,7 +1409,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@gujuck/api@workspace:packages/api":
+"@gujuck/api@workspace:*, @gujuck/api@workspace:packages/api":
   version: 0.0.0-use.local
   resolution: "@gujuck/api@workspace:packages/api"
   dependencies:

@@ -1,47 +1,339 @@
-.ak-header {
+/*
+ * 반응형 원칙 두 가지.
+ *
+ * 1) 판은 CanvasStage가 컨테이너를 채우고 AlkkagiGame이 정사각형으로 스케일한다.
+ *    그래서 CSS는 판 크기를 계산하지 않는다 — 캔버스 영역만 남겨주면 된다.
+ * 2) 글자와 여백은 clamp로 화면 폭을 따라 움직인다. 중단점마다 값을 다시 쓰면
+ *    어느 순간 한 곳만 빠뜨린다.
+ */
+
+:root {
+  --ak-bg: #0f1420;
+  --ak-panel: #1a2130;
+  --ak-line: #2b3446;
+  --ak-text: #e8ecf4;
+  --ak-muted: #9aa6bd;
+  --ak-accent: #4fc3f7;
+  --ak-danger: #ff7b7b;
+  --ak-gap: clamp(0.5rem, 2vw, 1rem);
+  --ak-radius: 14px;
+}
+
+body {
+  margin: 0;
+  background: var(--ak-bg);
+  color: var(--ak-text);
+  font-family:
+    'Pretendard',
+    system-ui,
+    -apple-system,
+    'Apple SD Gothic Neo',
+    sans-serif;
+  /* 모바일 브라우저 주소창이 접힐 때 100vh는 잘린다. dvh가 실제 보이는 높이다. */
+  min-height: 100dvh;
+}
+
+/* ---- 공통 조각 ---------------------------------------------------------- */
+
+.ak-center {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--ak-gap);
+  box-sizing: border-box;
+}
+
+.ak-card {
+  width: min(100%, 26rem);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ak-gap);
+  padding: clamp(1rem, 4vw, 1.75rem);
+  background: var(--ak-panel);
+  border: 1px solid var(--ak-line);
+  border-radius: var(--ak-radius);
+  box-sizing: border-box;
+}
+
+.ak-card__title {
+  margin: 0;
+  font-size: clamp(1.1rem, 4vw, 1.5rem);
+}
+
+.ak-card__lead {
+  margin: 0;
+  color: var(--ak-muted);
+  font-size: clamp(0.82rem, 3vw, 0.95rem);
+  line-height: 1.5;
+}
+
+.ak-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--ak-muted);
+}
+
+.ak-field input,
+.ak-join input {
+  padding: 0.7rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--ak-line);
+  background: #121826;
+  color: var(--ak-text);
+  /* iOS는 16px 미만 입력창에 포커스가 가면 화면을 확대한다. */
+  font-size: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ak-field input:focus,
+.ak-join input:focus {
+  outline: 2px solid var(--ak-accent);
+  outline-offset: 1px;
+}
+
+.ak-btn {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--ak-line);
+  background: #202a3c;
+  color: var(--ak-text);
+  font-size: clamp(0.85rem, 3vw, 0.95rem);
+  font-weight: 600;
+  cursor: pointer;
+  /* 손가락으로 누를 수 있는 최소 크기. */
+  min-height: 44px;
+}
+
+.ak-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ak-btn--primary {
+  background: var(--ak-accent);
+  border-color: var(--ak-accent);
+  color: #04121b;
+}
+
+.ak-btn--ghost {
+  background: transparent;
+  color: var(--ak-muted);
+}
+
+.ak-btn--sm {
+  padding: 0.5rem 0.8rem;
+  min-height: 38px;
+}
+
+.ak-error {
+  margin: 0;
+  color: var(--ak-danger);
+  font-size: 0.85rem;
+}
+
+.ak-notice {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  background: rgba(79, 195, 247, 0.12);
+  color: var(--ak-accent);
+  font-size: 0.85rem;
+}
+
+.ak-code {
+  font-size: clamp(2rem, 12vw, 3rem);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-align: center;
+  /* 코드를 불러주는 상황이 많다. 숫자·글자 폭을 고르게. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 로비 --------------------------------------------------------------- */
+
+.ak-lobby {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ak-gap);
+  padding: var(--ak-gap);
+  max-width: 32rem;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.ak-lobby__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--ak-gap);
 }
 
-.ak-title {
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.ak-counts {
-  display: flex;
-  gap: 8px;
-}
-
-.ak-chip {
-  border-radius: 999px;
-  padding: 5px 12px;
-  font-size: 13px;
+.ak-lobby__name {
+  font-size: clamp(1rem, 4vw, 1.25rem);
   font-weight: 700;
-  border: 1px solid var(--gj-border);
 }
 
-.ak-chip--black {
-  background: #1b1b1f;
-  color: #d9d9e2;
+.ak-lobby__rating {
+  color: var(--ak-muted);
+  font-size: 0.85rem;
 }
 
-.ak-chip--white {
-  background: #f4f4f6;
-  color: #23252c;
+.ak-join {
+  display: flex;
+  gap: 0.5rem;
 }
 
+.ak-join input {
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+
+.ak-rank {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ak-rank__row {
+  display: grid;
+  /* 순위·점수·전적은 폭이 고정, 이름만 남는 공간을 먹는다. */
+  grid-template-columns: 2rem 1fr auto auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem 0.6rem;
+  background: #141b28;
+  border-radius: 8px;
+  font-size: clamp(0.78rem, 3vw, 0.9rem);
+}
+
+.ak-rank__no {
+  color: var(--ak-muted);
+  text-align: center;
+}
+
+.ak-rank__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ak-rank__score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ak-rank__wl {
+  color: var(--ak-muted);
+  font-size: 0.78em;
+}
+
+/* ---- 대국 화면 ---------------------------------------------------------- */
+
+.ak-header,
 .ak-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--ak-gap);
+  width: 100%;
+  /* 스킬 버튼까지 들어가면 좁은 폰에서 한 줄에 안 담긴다. 넘치면 접는다. */
+  flex-wrap: wrap;
+}
+
+.ak-title {
+  font-weight: 700;
+  font-size: clamp(0.95rem, 3.5vw, 1.15rem);
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.ak-vs {
+  font-weight: 400;
+  font-size: 0.75em;
+  color: var(--ak-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ak-counts {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.ak-chip {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 1px solid var(--ak-line);
+}
+
+.ak-chip--black {
+  background: #12151d;
+  color: #cfd6e6;
+}
+
+.ak-chip--white {
+  background: #eef1f7;
+  color: #1b1b1f;
 }
 
 .ak-status {
-  color: var(--gj-text-dim);
-  font-size: 14px;
-  font-weight: 600;
+  color: var(--ak-muted);
+  font-size: clamp(0.78rem, 3vw, 0.9rem);
+  min-width: 0;
+}
+
+.ak-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.ak-delta {
+  margin-top: 0.35rem;
+  font-weight: 700;
+  color: var(--ak-accent);
+}
+
+.ak-toast {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 0.75rem;
+  max-width: min(90%, 28rem);
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(10, 14, 22, 0.9);
+  border: 1px solid var(--ak-line);
+  color: var(--ak-text);
+  font-size: clamp(0.75rem, 3vw, 0.85rem);
+  text-align: center;
+  pointer-events: none;
+}
+
+/* 세로가 짧은 가로 화면(폰을 눕힌 경우)에서는 머리말·꼬리말을 눌러 판을 살린다. */
+@media (max-height: 520px) {
+  .ak-header,
+  .ak-footer {
+    font-size: 0.8rem;
+  }
+
+  .ak-btn--sm {
+    min-height: 32px;
+    padding: 0.35rem 0.6rem;
+  }
 }
