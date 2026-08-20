@@ -9,14 +9,34 @@ const STONE_RADIUS = 24
 const MAX_PULL = 150
 const STONE_COUNT = 5
 /**
- * 최대 세기로 튕겼을 때의 초기 속도(스텝당 이동 픽셀).
+ * 한 프레임의 물리를 몇 번에 나눠 계산할지.
  *
- * 실측으로 정한 값이다. 그리고 돌 지름(48)보다 작아야 한다 — matter.js에는
- * 연속 충돌 검사가 없어서 한 스텝 이동 거리가 지름을 넘으면 돌끼리 그냥
- * 통과해버린다. 돌이 5개로 늘어 배치가 촘촘해질수록 이 위험은 커지므로
- * 상한을 올리지 않는다.
+ * matter.js에는 연속 충돌 검사가 없어서 한 번의 갱신에서 움직인 거리가 돌
+ * 지름(48)을 넘으면 돌끼리 그냥 통과한다. 세게 칠 수 있게 하려면 이동 거리를
+ * 쪼개는 수밖에 없다. 4분할이면 최대 세기에서도 한 번에 6px만 움직인다.
+ *
+ * 고정 횟수여야 한다. 속도에 따라 분할 수를 바꾸면 두 클라의 계산 순서가
+ * 달라져 락스텝이 깨진다.
  */
-const MAX_FLICK_SPEED = 17
+const PHYSICS_SUBSTEPS = 4
+/**
+ * 최대 세기로 튕겼을 때의 초기 속도(갱신당 이동 픽셀).
+ *
+ * 기준은 "빈 판에서 얼마나 굴러가는가"다. 판 한 변이 600px인데 이 값이 24면
+ * 최대로 당겼을 때 약 850px을 굴러간다 — 판을 한 번 가로지르고도 남는다.
+ * 32까지 올려봤더니 1130px이라 판 두 개를 지나가 버려서 조준이 의미가 없었다.
+ *
+ * 절반 당김에서는 297px로, 분할 계산을 넣기 전 값(17 선형)과 정확히 같다.
+ * 즉 평소 감각은 그대로 두고 끝에서만 여유를 준 값이다.
+ */
+const MAX_FLICK_SPEED = 24
+/**
+ * 세기 곡선의 지수. 1이면 당긴 만큼 선형으로 세진다.
+ *
+ * 최대치만 올리고 선형을 유지하면 살짝 당긴 샷까지 같이 세져서 미세 조정이
+ * 안 된다. 1.5를 주면 약하게 치는 감각은 예전과 거의 같고 끝에서만 크게 붙는다.
+ */
+const FLICK_CURVE = 1.5
 /** 이 속도 아래면 멈춘 것으로 본다. */
 const REST_SPEED = 0.12
 
@@ -202,7 +222,13 @@ export class AlkkagiGame {
     const body = Bodies.circle(stone.x, stone.y, STONE_RADIUS, {
       restitution: 0.82,
       friction: 0,
-      // 바닥 마찰 대용. 값이 크면 금방 멈추고, 작으면 미끄러진다.
+      /*
+       * 바닥 마찰 대용. 값이 크면 금방 멈추고, 작으면 미끄러진다.
+       *
+       * 분할 계산을 넣어도 이 값은 그대로 둔다. matter.js가 frictionAir를
+       * 기준 delta(16.7ms) 대비 비율로 스스로 보정하기 때문에, 분할 수를
+       * 1에서 8로 바꿔도 감속은 같다. 여기서 직접 보정하면 이중으로 걸린다.
+       */
       frictionAir: 0.028,
       density: 0.0016,
     })
@@ -213,17 +239,18 @@ export class AlkkagiGame {
   private update(dtSec: number): void {
     if (this.mode !== 'playing') return
 
-    Engine.update(this.engine, dtSec * 1000)
+    const stepMs = (dtSec * 1000) / PHYSICS_SUBSTEPS
+    for (let i = 0; i < PHYSICS_SUBSTEPS; i += 1) {
+      Engine.update(this.engine, stepMs)
+    }
 
     // 판 밖으로 나간 돌을 제거한다. 벽이 없는 게 알까기의 핵심 규칙이다.
     const survivors: Stone[] = []
     for (const stone of this.stones) {
       const { x, y } = stone.body.position
-      const out =
-        x < -STONE_RADIUS ||
-        x > BOARD + STONE_RADIUS ||
-        y < -STONE_RADIUS ||
-        y > BOARD + STONE_RADIUS
+      // 중심이 선에 닿으면 절반이 나간 것이다. 그 이상은 떨어뜨린다.
+      // 가장자리에 걸쳐 있어도 절반이 판 위에 남아 있으면 살아남는다.
+      const out = x <= 0 || x >= BOARD || y <= 0 || y >= BOARD
       if (out) Composite.remove(this.engine.world, stone.body)
       else survivors.push(stone)
     }
@@ -342,7 +369,8 @@ export class AlkkagiGame {
     const pulled = Math.hypot(dx, dy)
     if (pulled < 6) return
 
-    const speed = (clamp(pulled, 0, MAX_PULL) / MAX_PULL) * MAX_FLICK_SPEED
+    const ratio = clamp(pulled, 0, MAX_PULL) / MAX_PULL
+    const speed = MAX_FLICK_SPEED * Math.pow(ratio, FLICK_CURVE)
     this.onFlickRequest(stone.id, (dx / pulled) * speed, (dy / pulled) * speed)
   }
 
