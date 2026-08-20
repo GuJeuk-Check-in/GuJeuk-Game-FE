@@ -39,6 +39,15 @@ const MAX_FLICK_SPEED = 24
 const FLICK_CURVE = 1.5
 /** 이 속도 아래면 멈춘 것으로 본다. */
 const REST_SPEED = 0.12
+/**
+ * 배치할 때 돌 중심이 유지해야 하는 최소 거리.
+ *
+ * 지름에 아주 작은 여유를 더한다. 정확히 지름으로 밀어내면 부동소수점 오차로
+ * 47.99999가 나와 "겹쳤다"는 검사에 걸리는 경우가 생긴다.
+ */
+const MIN_PLACEMENT_GAP = STONE_RADIUS * 2 + 0.01
+/** 밀어내기를 몇 번까지 되풀이할지. 좁은 틈에서 자리를 잡으려면 여러 번 필요하다. */
+const RESOLVE_PASSES = 6
 
 export type Mode = 'placement' | 'playing' | 'over'
 
@@ -180,6 +189,80 @@ export class AlkkagiGame {
     }
 
     return true
+  }
+
+  /**
+   * 끌고 있는 돌을 진영 안에서 다른 돌과 겹치지 않는 자리로 옮긴다.
+   *
+   * 겹친 채로 두고 경고를 띄우는 대신 아예 못 겹치게 막는다. 손끝이 다른 돌
+   * 위로 들어가면 그 돌 둘레를 따라 미끄러지므로, 붙여 놓으려 할 때 자연스럽게
+   * 옆자리를 찾아간다.
+   *
+   * **자리를 검사해서 통과한 위치만 돌려준다.** 밀어낸 결과가 진영 밖이면
+   * 다시 안으로 잡아넣어야 하는데, 그 자리가 또 다른 돌 위일 수 있다. 구석에
+   * 돌이 몰리면 이 왕복이 끝나지 않아 겹친 채로 끝나는 경우가 실제로 나온다.
+   * 그래서 후보를 만들어 보고, 어느 것도 통과하지 못하면 제자리에 둔다.
+   */
+  private resolvePlacement(index: number, desired: PointerPoint): PointerPoint {
+    const contained = this.contain(desired)
+    if (this.isFreeSpot(index, contained)) return contained
+
+    const pushed = this.pushOut(index, contained)
+    if (this.isFreeSpot(index, pushed)) return pushed
+
+    // 갈 수 있는 자리가 없다. 움직이지 않는 편이 겹치는 것보다 낫다.
+    return this.placement[index]
+  }
+
+  /** 판과 내 진영 안으로 잡아넣는다. */
+  private contain(point: PointerPoint): PointerPoint {
+    const { min, max } = this.myHalf()
+    return {
+      x: clamp(point.x, STONE_RADIUS, BOARD - STONE_RADIUS),
+      y: clamp(point.y, min, max),
+    }
+  }
+
+  /** 그 자리가 진영 안이고 어느 돌과도 겹치지 않는지. */
+  private isFreeSpot(index: number, point: PointerPoint): boolean {
+    const { min, max } = this.myHalf()
+    if (point.x < STONE_RADIUS || point.x > BOARD - STONE_RADIUS) return false
+    if (point.y < min || point.y > max) return false
+
+    return this.placement.every(
+      (other, i) => i === index || distance(point.x, point.y, other.x, other.y) >= STONE_RADIUS * 2,
+    )
+  }
+
+  /** 겹친 돌들 바깥으로 밀어낸다. 한 번 밀면 다른 돌에 닿을 수 있어 되풀이한다. */
+  private pushOut(index: number, from: PointerPoint): PointerPoint {
+    let point = from
+
+    for (let pass = 0; pass < RESOLVE_PASSES; pass += 1) {
+      let pushed = false
+
+      for (let i = 0; i < this.placement.length; i += 1) {
+        if (i === index) continue
+
+        const other = this.placement[i]
+        const dx = point.x - other.x
+        const dy = point.y - other.y
+        const gap = Math.hypot(dx, dy)
+        if (gap >= MIN_PLACEMENT_GAP) continue
+
+        // 정확히 포개지면 밀어낼 방향이 없다. 그때는 위쪽으로 정한다.
+        const nx = gap > 0.0001 ? dx / gap : 0
+        const ny = gap > 0.0001 ? dy / gap : -1
+
+        point = { x: other.x + nx * MIN_PLACEMENT_GAP, y: other.y + ny * MIN_PLACEMENT_GAP }
+        pushed = true
+      }
+
+      point = this.contain(point)
+      if (!pushed) break
+    }
+
+    return point
   }
 
   // ---- 대국 -------------------------------------------------------------
@@ -335,13 +418,9 @@ export class AlkkagiGame {
     if (this.mode === 'placement') {
       if (this.placingIndex < 0) return
 
-      // 진영 밖으로는 아예 못 나가게 잡아둔다. 놓은 뒤에 빨간 경고를 띄우는
-      // 것보다 손끝에서 막히는 편이 이유가 분명하다.
-      const { min, max } = this.myHalf()
-      this.placement[this.placingIndex] = {
-        x: clamp(world.x, STONE_RADIUS, BOARD - STONE_RADIUS),
-        y: clamp(world.y, min, max),
-      }
+      // 진영 밖으로도, 다른 돌 위로도 아예 못 가게 잡아둔다. 놓은 뒤에 빨간
+      // 경고를 띄우는 것보다 손끝에서 막히는 편이 이유가 분명하다.
+      this.placement[this.placingIndex] = this.resolvePlacement(this.placingIndex, world)
       this.emit()
       return
     }
