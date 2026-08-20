@@ -7,6 +7,7 @@ import com.gujeuk.game.global.jwt.JwtTokenProvider;
 import com.gujeuk.game.match.domain.Player;
 import com.gujeuk.game.match.domain.Room;
 import com.gujeuk.game.match.domain.Seat;
+import com.gujeuk.game.match.domain.Skill;
 import com.gujeuk.game.match.domain.Stone;
 import com.gujeuk.game.match.service.RoomService;
 import com.gujeuk.game.member.domain.Member;
@@ -100,6 +101,10 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                     node.path("black").asInt(),
                     node.path("white").asInt(),
                     firstZero(node)));
+            case "SKILL" -> withSeat(connection, (room, seat) -> room.useSkill(
+                    seat,
+                    Skill.valueOf(node.path("skill").asText().toUpperCase()),
+                    node.path("stoneId").asInt()));
             case "RESIGN" -> withSeat(connection, Room::resign);
             default -> send(session, Map.of("type", "ERROR", "message", "알 수 없는 요청입니다: " + type));
         }

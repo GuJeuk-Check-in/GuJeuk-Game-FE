@@ -13,7 +13,7 @@ const STONE_COUNT = 5
  *
  * matter.js에는 연속 충돌 검사가 없어서 한 번의 갱신에서 움직인 거리가 돌
  * 지름(48)을 넘으면 돌끼리 그냥 통과한다. 세게 칠 수 있게 하려면 이동 거리를
- * 쪼개는 수밖에 없다. 4분할이면 최대 세기에서도 한 번에 6px만 움직인다.
+ * 쪼개는 수밖에 없다. 4분할이면 최대 세기에서도 한 번에 약 8px만 움직인다.
  *
  * 고정 횟수여야 한다. 속도에 따라 분할 수를 바꾸면 두 클라의 계산 순서가
  * 달라져 락스텝이 깨진다.
@@ -49,6 +49,13 @@ const MIN_PLACEMENT_GAP = STONE_RADIUS * 2 + 0.01
 /** 밀어내기를 몇 번까지 되풀이할지. 좁은 틈에서 자리를 잡으려면 여러 번 필요하다. */
 const RESOLVE_PASSES = 6
 
+/** GROW 스킬로 커지는 최대 배율. 지름이 1.6배면 맞히기가 눈에 띄게 쉬워진다. */
+const GROW_MAX_SCALE = 1.6
+/** 최대 크기까지 부풀어 오르는 데 걸리는 물리 갱신 수. 240분할 기준 약 0.15초. */
+const GROW_RAMP_TICKS = 36
+/** 이 속도 아래로 느려지면 원래 크기로 돌아온다. */
+const GROW_KEEP_SPEED = 6
+
 export type Mode = 'placement' | 'playing' | 'over'
 
 export interface AlkkagiSnapshot {
@@ -60,7 +67,15 @@ export interface AlkkagiSnapshot {
   settling: boolean
   /** 배치 단계에서 5개가 모두 규칙에 맞게 놓였는지. */
   placementValid: boolean
+  /** 아직 안 쓴 스킬. */
+  skillsLeft: Skill[]
+  /** 지금 이 순간 걸 수 있는 스킬. 버튼 활성 여부가 이 값이다. */
+  usableSkills: Skill[]
+  /** 지금 대상을 고르는 중인 스킬. 없으면 null. */
+  armingSkill: Skill | null
 }
+
+export type Skill = 'GROW' | 'ANCHOR'
 
 export interface AlkkagiGameOptions {
   stage: CanvasStage
@@ -72,6 +87,8 @@ export interface AlkkagiGameOptions {
    * 시뮬레이션한다. 보낸 쪽만 자기 로컬 값을 쓰면 미세하게 갈라진다.
    */
   onFlickRequest: (stoneId: number, vx: number, vy: number) => void
+  /** 스킬 대상을 골랐을 때. 물리 반영은 서버가 되돌려준 뒤에 한다. */
+  onSkillRequest: (skill: Skill, stoneId: number) => void
   /**
    * 돌이 다 멈췄을 때. 최종 상태 해시와 남은 돌 수, 그리고 어느 쪽이 먼저
    * 0개가 됐는지를 서버로 보고한다.
@@ -87,6 +104,14 @@ interface Stone {
   id: number
   body: Body
   owner: Player
+  /** 현재 반지름 배율. GROW가 걸린 돌만 1이 아니다. */
+  scale: number
+  /** GROW가 걸려 있고 아직 안 친 상태. */
+  growArmed: boolean
+  /** GROW가 걸린 채 날아가는 중. 이 값이 있으면 몇 갱신째인지 센다. */
+  growTicks: number | null
+  /** ANCHOR로 박혀 있는지. */
+  anchored: boolean
 }
 
 /**
@@ -106,6 +131,7 @@ export class AlkkagiGame {
   private readonly myColor: Player
   private readonly onChange: (snapshot: AlkkagiSnapshot) => void
   private readonly onFlickRequest: (stoneId: number, vx: number, vy: number) => void
+  private readonly onSkillRequest: (skill: Skill, stoneId: number) => void
   private readonly onSettled: (
     hash: string,
     black: number,
@@ -126,6 +152,9 @@ export class AlkkagiGame {
   private placement: PointerPoint[] = []
   private placingIndex = -1
 
+  private dragging: Stone | null = null
+  private dragPoint: PointerPoint | null = null
+
   /**
    * 화면을 180° 돌려 그릴지.
    *
@@ -142,8 +171,8 @@ export class AlkkagiGame {
   /** 각 색이 0개가 된 시점(tick). 아직이면 null. */
   private zeroAt: Record<Player, number | null> = { black: null, white: null }
 
-  private dragging: Stone | null = null
-  private dragPoint: PointerPoint | null = null
+  private skillsLeft: Skill[] = ['GROW', 'ANCHOR']
+  private armingSkill: Skill | null = null
 
   constructor(options: AlkkagiGameOptions) {
     this.stage = options.stage
@@ -151,6 +180,7 @@ export class AlkkagiGame {
     this.flipped = options.myColor === 'white'
     this.onChange = options.onChange
     this.onFlickRequest = options.onFlickRequest
+    this.onSkillRequest = options.onSkillRequest
     this.onSettled = options.onSettled
 
     this.engine = Engine.create({ gravity: { x: 0, y: 0, scale: 0 } })
@@ -328,8 +358,99 @@ export class AlkkagiGame {
     // 제곱에 얽혀 있어 "얼마나 세게"가 직관적으로 안 잡히고, 조금만 키워도 돌이
     // 한 프레임에 수천 픽셀을 날아가 상대를 관통한다.
     Body.setVelocity(stone.body, { x: vx, y: vy })
+
+    if (stone.growArmed) {
+      stone.growArmed = false
+      stone.growTicks = 0
+    }
+
     this.settling = true
     this.emit()
+  }
+
+  /** 스킬 버튼을 눌렀을 때. 이제 돌을 고르면 발동한다. 같은 걸 다시 누르면 취소. */
+  armSkill(skill: Skill): void {
+    if (!this.canUse(skill)) return
+
+    this.armingSkill = this.armingSkill === skill ? null : skill
+    this.emit()
+  }
+
+  /**
+   * 지금 그 스킬을 걸 수 있는지.
+   *
+   * GROW는 내 차례에 쓴다(이어서 그 돌로 쳐야 하므로).
+   * ANCHOR는 반대로 상대 차례에만 쓴다 — 들어오는 샷을 막는 것이 목적이다.
+   */
+  private canUse(skill: Skill): boolean {
+    if (this.mode !== 'playing' || this.settling) return false
+    if (!this.skillsLeft.includes(skill)) return false
+
+    return skill === 'GROW' ? this.turn === this.myColor : this.turn !== this.myColor
+  }
+
+  cancelSkill(): void {
+    this.armingSkill = null
+    this.emit()
+  }
+
+  /**
+   * 서버가 중계한 스킬을 반영한다. 건 사람에게도 이 경로로 돌아온다.
+   *
+   * GROW는 바로 커지지 않는다. 그 돌을 실제로 칠 때부터 부풀어 오른다.
+   * ANCHOR는 즉시 정적 바디로 바꾼다 — matter.js에서 정적 바디는 질량이
+   * 무한이라 부딪힌 쪽만 튕겨나간다.
+   */
+  applySkill(skill: Skill, stoneId: number, by: Player): void {
+    const stone = this.stones.find((s) => s.id === stoneId)
+    if (!stone) return
+
+    if (by === this.myColor) {
+      this.skillsLeft = this.skillsLeft.filter((s) => s !== skill)
+      this.armingSkill = null
+    }
+
+    if (skill === 'GROW') stone.growArmed = true
+    else {
+      stone.anchored = true
+      Body.setStatic(stone.body, true)
+    }
+
+    this.emit()
+  }
+
+  /**
+   * 커졌다 줄어드는 과정. 갱신 횟수와 속도로만 정해지므로 두 클라가 같은 값을 낸다.
+   *
+   * 부풀어 오르는 데 시간을 두는 이유는 "가면서 커진다"는 게 스킬의 모습이기
+   * 때문이다. 치자마자 커지면 그냥 큰 돌로 치는 것과 다르지 않다.
+   * 느려지면 저절로 원래 크기로 돌아온다.
+   */
+  private updateGrow(stone: Stone): void {
+    if (stone.growTicks === null) return
+
+    stone.growTicks += 1
+
+    const ramp = clamp(stone.growTicks / GROW_RAMP_TICKS, 0, 1)
+    const keep = clamp(Body.getSpeed(stone.body) / GROW_KEEP_SPEED, 0, 1)
+    const target = 1 + (GROW_MAX_SCALE - 1) * ramp * keep
+
+    // matter.js는 배율을 누적 적용한다. 현재 대비 비율로 넘겨야 한다.
+    const factor = target / stone.scale
+    Body.scale(stone.body, factor, factor)
+    stone.scale = target
+
+    if (target <= 1.0001 && ramp >= 1) {
+      this.resetScale(stone)
+      stone.growTicks = null
+    }
+  }
+
+  private resetScale(stone: Stone): void {
+    if (stone.scale === 1) return
+    const factor = 1 / stone.scale
+    Body.scale(stone.body, factor, factor)
+    stone.scale = 1
   }
 
   private createStone(stone: PlacedStone): Stone {
@@ -347,7 +468,15 @@ export class AlkkagiGame {
       density: 0.0016,
     })
     Composite.add(this.engine.world, body)
-    return { id: stone.id, body, owner: stone.owner }
+    return {
+      id: stone.id,
+      body,
+      owner: stone.owner,
+      scale: 1,
+      growArmed: false,
+      growTicks: null,
+      anchored: false,
+    }
   }
 
   private update(dtSec: number): void {
@@ -359,6 +488,7 @@ export class AlkkagiGame {
     let removed = false
     for (let i = 0; i < PHYSICS_SUBSTEPS; i += 1) {
       Engine.update(this.engine, stepMs)
+      for (const stone of this.stones) this.updateGrow(stone)
       if (this.removeFallenStones()) removed = true
     }
 
@@ -368,6 +498,7 @@ export class AlkkagiGame {
       // 다 멈췄으니 결과를 보고한다. 턴을 여기서 넘기지 않는다 — 순서는
       // 서버가 양쪽 보고를 대조한 뒤에 정한다.
       this.settling = false
+      this.clearShotEffects()
       this.onSettled(this.hash(), this.count('black'), this.count('white'), this.firstZero())
       this.emit()
     } else if (removed) {
@@ -400,6 +531,26 @@ export class AlkkagiGame {
   }
 
   /**
+   * 한 샷이 끝나면 스킬 효과를 푼다. 둘 다 "그 샷 한 번"짜리다.
+   *
+   * ANCHOR는 건 다음 상대 샷 동안만 버틴다. 여기서 풀지 않으면 영원히 박힌
+   * 돌이 되어 한 번 쓴 사람이 계속 유리해진다.
+   */
+  private clearShotEffects(): void {
+    for (const stone of this.stones) {
+      if (stone.growTicks !== null) {
+        this.resetScale(stone)
+        stone.growTicks = null
+      }
+
+      if (stone.anchored) {
+        stone.anchored = false
+        Body.setStatic(stone.body, false)
+      }
+    }
+  }
+
+  /**
    * 먼저 0개가 된 쪽. 그쪽이 진다.
    *
    * 마지막 한 개씩 남은 상태에서 친 돌과 맞은 돌이 함께 나가면 양쪽 다 0개가
@@ -429,7 +580,10 @@ export class AlkkagiGame {
     return this.stones
       .slice()
       .sort((a, b) => a.id - b.id)
-      .map((s) => `${s.id}:${s.body.position.x.toFixed(1)},${s.body.position.y.toFixed(1)}`)
+      .map(
+        (s) =>
+          `${s.id}:${s.body.position.x.toFixed(1)},${s.body.position.y.toFixed(1)},${s.scale.toFixed(2)}`,
+      )
       .join('|')
   }
 
@@ -445,6 +599,9 @@ export class AlkkagiGame {
       white: this.mode === 'placement' ? STONE_COUNT : this.count('white'),
       settling: this.settling,
       placementValid: this.mode === 'placement' ? this.placementValid() : true,
+      skillsLeft: [...this.skillsLeft],
+      usableSkills: (['GROW', 'ANCHOR'] as Skill[]).filter((skill) => this.canUse(skill)),
+      armingSkill: this.armingSkill,
     })
   }
 
@@ -464,14 +621,25 @@ export class AlkkagiGame {
       return
     }
 
-    if (!this.myTurn) return
+    // 스킬 대상 고르기는 내 차례가 아니어도 된다(ANCHOR가 그렇다).
+    const arming = this.armingSkill
+    if (arming === null && !this.myTurn) return
 
     const hit = this.stones.find(
       (s) =>
         s.owner === this.myColor &&
-        distance(world.x, world.y, s.body.position.x, s.body.position.y) <= STONE_RADIUS * 1.6,
+        distance(world.x, world.y, s.body.position.x, s.body.position.y) <=
+          STONE_RADIUS * s.scale * 1.6,
     )
     if (!hit) return
+
+    // 스킬 대상을 고르는 중이면 여기서 끝난다. 끌지 않는다.
+    if (arming !== null) {
+      this.onSkillRequest(arming, hit.id)
+      this.armingSkill = null
+      this.emit()
+      return
+    }
 
     this.dragging = hit
     this.dragPoint = world
@@ -632,9 +800,31 @@ export class AlkkagiGame {
 
     for (const stone of this.stones) {
       const { x, y } = stone.body.position
-      this.drawStone(ctx, x, y, stone.owner)
+      this.drawStone(ctx, x, y, stone.owner, STONE_RADIUS * stone.scale)
 
-      if (stone.owner === this.myColor && this.myTurn) {
+      // 표시는 건 사람에게만 보인다. 상대는 부딪혀 보거나 커지는 걸 보고서야
+      // 안다. 서버도 상대가 실제로 칠 때까지 알리지 않는다.
+      const mine = stone.owner === this.myColor
+
+      if (stone.anchored && mine) {
+        ctx.beginPath()
+        ctx.arc(x, y, STONE_RADIUS + 8, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(255, 196, 84, 0.9)'
+        ctx.lineWidth = 3
+        ctx.setLineDash([6, 5])
+        ctx.stroke()
+        ctx.setLineDash([])
+      }
+
+      if (stone.growArmed && mine) {
+        ctx.beginPath()
+        ctx.arc(x, y, STONE_RADIUS + 8, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(120, 255, 180, 0.9)'
+        ctx.lineWidth = 3
+        ctx.stroke()
+      }
+
+      if (stone.owner === this.myColor && (this.myTurn || this.armingSkill !== null)) {
         ctx.beginPath()
         ctx.arc(x, y, STONE_RADIUS + 5, 0, Math.PI * 2)
         ctx.strokeStyle = 'rgba(120, 220, 255, 0.75)'
@@ -644,9 +834,15 @@ export class AlkkagiGame {
     }
   }
 
-  private drawStone(ctx: CanvasRenderingContext2D, x: number, y: number, owner: Player): void {
+  private drawStone(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    owner: Player,
+    radius: number = STONE_RADIUS,
+  ): void {
     ctx.beginPath()
-    ctx.arc(x, y, STONE_RADIUS, 0, Math.PI * 2)
+    ctx.arc(x, y, radius, 0, Math.PI * 2)
     ctx.fillStyle = owner === 'black' ? '#1b1b1f' : '#f4f4f6'
     ctx.fill()
     ctx.lineWidth = 2

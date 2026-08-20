@@ -1,8 +1,19 @@
 import { useCallback, useState } from 'react'
 import { GameCanvas, GameShell, ResultOverlay } from '@gujuck/ui'
 import type { CanvasStage } from '@gujuck/game-core'
+import type { Skill } from '@gujuck/api'
 import { AlkkagiGame } from '../game/AlkkagiGame'
 import type { Match } from '../useMatch'
+
+const SKILL_LABEL: Record<Skill, string> = {
+  GROW: '커지기',
+  ANCHOR: '고정',
+}
+
+const SKILL_HINT: Record<Skill, string> = {
+  GROW: '칠 돌을 고르세요. 날아가는 동안 커집니다.',
+  ANCHOR: '지킬 돌을 고르세요. 상대는 부딪혀 보기 전까지 모릅니다.',
+}
 
 const LABEL: Record<string, string> = {
   KNOCKOUT: '상대 돌을 모두 떨어뜨렸습니다',
@@ -35,6 +46,7 @@ export function BoardScreen({ match }: { match: Match }) {
         myColor,
         onChange: setSnapshot,
         onFlickRequest: match.flick,
+        onSkillRequest: match.useSkill,
         onSettled: match.turnEnd,
       })
 
@@ -47,7 +59,7 @@ export function BoardScreen({ match }: { match: Match }) {
         attachGame(null)
       }
     },
-    [myColor, setSnapshot, attachGame, match.flick, match.turnEnd],
+    [myColor, setSnapshot, attachGame, match.flick, match.turnEnd, match.useSkill],
   )
 
   const confirmPlacement = () => {
@@ -78,19 +90,21 @@ export function BoardScreen({ match }: { match: Match }) {
       footer={
         <div className="ak-footer">
           <div className="ak-status">
-            {placing
-              ? placed
-                ? opponentPlaced
-                  ? '곧 시작합니다…'
-                  : '상대가 배치하는 중…'
-                : snapshot.placementValid
-                  ? '배치를 마쳤으면 확인을 누르세요.'
-                  : '겹치지 않게, 내 진영 안에 놓아주세요.'
-              : snapshot.settling
-                ? '돌이 구르는 중…'
-                : myTurn
-                  ? '내 차례입니다. 돌을 당겼다 놓으세요.'
-                  : '상대 차례입니다.'}
+            {snapshot.armingSkill
+              ? SKILL_HINT[snapshot.armingSkill]
+              : placing
+                ? placed
+                  ? opponentPlaced
+                    ? '곧 시작합니다…'
+                    : '상대가 배치하는 중…'
+                  : snapshot.placementValid
+                    ? '배치를 마쳤으면 확인을 누르세요.'
+                    : '겹치지 않게, 내 진영 안에 놓아주세요.'
+                : snapshot.settling
+                  ? '돌이 구르는 중…'
+                  : myTurn
+                    ? '내 차례입니다. 돌을 당겼다 놓으세요.'
+                    : '상대 차례입니다.'}
           </div>
 
           <div className="ak-actions">
@@ -103,6 +117,17 @@ export function BoardScreen({ match }: { match: Match }) {
                 배치 확인
               </button>
             )}
+            {phase === 'playing' &&
+              (['GROW', 'ANCHOR'] as const).map((skill) => (
+                <button
+                  key={skill}
+                  className={`ak-btn ak-btn--sm${snapshot.armingSkill === skill ? ' ak-btn--primary' : ''}`}
+                  onClick={() => game?.armSkill(skill)}
+                  disabled={!snapshot.usableSkills.includes(skill)}
+                >
+                  {SKILL_LABEL[skill]}
+                </button>
+              ))}
             {phase === 'playing' && (
               <button className="ak-btn ak-btn--ghost ak-btn--sm" onClick={match.resign}>
                 기권

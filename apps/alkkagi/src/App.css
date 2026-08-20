@@ -244,6 +244,8 @@ body {
   justify-content: space-between;
   gap: var(--ak-gap);
   width: 100%;
+  /* 스킬 버튼까지 들어가면 좁은 폰에서 한 줄에 안 담긴다. 넘치면 접는다. */
+  flex-wrap: wrap;
 }
 
 .ak-title {
@@ -298,6 +300,7 @@ body {
   display: flex;
   gap: 0.4rem;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .ak-delta {

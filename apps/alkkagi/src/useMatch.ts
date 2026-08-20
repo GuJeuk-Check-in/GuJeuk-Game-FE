@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createGameSocket, tokenStore } from '@gujuck/api'
-import type { GameSocket, PlacedStone, Player, Profile, ServerMessage } from '@gujuck/api'
+import type { GameSocket, PlacedStone, Player, Profile, ServerMessage, Skill } from '@gujuck/api'
 import { API_BASE } from './api'
 import type { AlkkagiGame, AlkkagiSnapshot } from './game/AlkkagiGame'
 
@@ -20,6 +20,9 @@ const IDLE_SNAPSHOT: AlkkagiSnapshot = {
   white: 5,
   settling: false,
   placementValid: true,
+  skillsLeft: ['GROW', 'ANCHOR'],
+  usableSkills: [],
+  armingSkill: null,
 }
 
 /**
@@ -96,6 +99,14 @@ export function useMatch() {
         else pendingStart.current = { stones, turn }
         break
       }
+
+      case 'SKILL':
+        gameRef.current?.applySkill(
+          message.skill as Skill,
+          message.stoneId as number,
+          message.by as Player,
+        )
+        break
 
       case 'FLICK':
         gameRef.current?.applyFlick(
@@ -218,6 +229,7 @@ export function useMatch() {
     joinRoom: (code: string) => socketRef.current?.joinRoom(code.trim().toUpperCase()),
     place: (stones: { x: number; y: number }[]) => socketRef.current?.place(stones),
     flick: (stoneId: number, vx: number, vy: number) => socketRef.current?.flick(stoneId, vx, vy),
+    useSkill: (skill: Skill, stoneId: number) => socketRef.current?.useSkill(skill, stoneId),
     turnEnd: (hash: string, black: number, white: number, firstZero: Player | null) =>
       socketRef.current?.turnEnd(hash, black, white, firstZero),
     resign: () => socketRef.current?.resign(),

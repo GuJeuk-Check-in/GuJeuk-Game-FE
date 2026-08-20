@@ -8,6 +8,9 @@
 
 export type Player = 'black' | 'white'
 
+/** 게임당 한 번씩 쓰는 스킬. */
+export type Skill = 'GROW' | 'ANCHOR'
+
 export interface PlacedStone {
   id: number
   owner: Player
@@ -34,6 +37,7 @@ export interface GameSocket {
   joinRoom(code: string): void
   place(stones: { x: number; y: number }[]): void
   flick(stoneId: number, vx: number, vy: number): void
+  useSkill(skill: Skill, stoneId: number): void
   turnEnd(hash: string, black: number, white: number, firstZero: Player | null): void
   resign(): void
   close(): void
@@ -70,6 +74,7 @@ export function createGameSocket(options: GameSocketOptions): GameSocket {
     joinRoom: (code) => send({ type: 'JOIN_ROOM', code }),
     place: (stones) => send({ type: 'PLACE', stones }),
     flick: (stoneId, vx, vy) => send({ type: 'FLICK', stoneId, vx, vy }),
+    useSkill: (skill, stoneId) => send({ type: 'SKILL', skill, stoneId }),
     turnEnd: (hash, black, white, firstZero) =>
       send({ type: 'TURN_END', hash, black, white, firstZero }),
     resign: () => send({ type: 'RESIGN' }),

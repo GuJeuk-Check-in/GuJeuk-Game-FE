@@ -42,6 +42,17 @@ public class Room {
     private Seat guest;
     private Player turn;
 
+    /** 샷이 진행 중인지. 굴러가는 도중에 스킬을 걸면 양쪽 계산이 갈라진다. */
+    private boolean shotInProgress = false;
+    /**
+     * 아직 상대에게 알리지 않은 스킬.
+     *
+     * 스킬을 걸자마자 상대에게 보내면 미리 대비할 수 있다. 그렇다고 끝까지
+     * 숨길 수도 없다 — 상대 클라도 같은 물리를 돌려야 하기 때문이다.
+     * 그래서 상대가 조준을 마치고 실제로 친 순간에 함께 보낸다.
+     */
+    private final List<PendingReveal> pendingReveals = new ArrayList<>();
+
     private RoomListener.Cancellable placementTimer;
     private RoomListener.Cancellable turnTimer;
     private final Map<Player, RoomListener.Cancellable> reconnectTimers = new HashMap<>();
@@ -189,13 +200,72 @@ public class Room {
 
     // ---- 대국 -------------------------------------------------------------
 
+    /**
+     * 스킬을 건다. 게임당 각 한 번씩이다.
+     *
+     * GROW는 내 차례에, 이어서 그 돌을 쳐야 성립한다.
+     * ANCHOR는 반대로 **내 차례가 아닐 때만** 건다. 들어오는 샷을 막는 것이
+     * 목적이라 내 차례에 걸어봐야 내 돌만 굳는다. 차례를 쓰지 않으므로
+     * 상대가 겨누는 동안 조용히 대비하는 수가 된다.
+     *
+     * 어느 쪽이든 굴러가는 도중에는 걸 수 없다. 이미 시작된 계산에 끼어들면
+     * 양쪽 결과가 갈라진다.
+     */
+    public synchronized void useSkill(Seat seat, Skill skill, int stoneId) {
+        if (state != RoomState.PLAYING) throw GameException.badRequest("대국 중이 아닙니다.");
+        if (shotInProgress) throw GameException.badRequest("돌이 구르는 중에는 걸 수 없습니다.");
+        if (!ownsStone(seat.getColor(), stoneId)) throw GameException.badRequest("자기 돌에만 걸 수 있습니다.");
+        if (seat.hasUsed(skill)) throw GameException.badRequest("이미 사용한 스킬입니다.");
+
+        if (skill == Skill.GROW) {
+            if (seat.getColor() != turn) throw GameException.badRequest("자기 차례가 아닙니다.");
+            if (seat.getArmedGrowStone() != null) throw GameException.badRequest("이미 스킬을 건 상태입니다.");
+        } else if (seat.getColor() == turn) {
+            throw GameException.badRequest("고정은 상대 차례에만 걸 수 있습니다.");
+        }
+
+        seat.markUsed(skill);
+
+        Map<String, Object> message = message("SKILL", Map.of(
+                "skill", skill.name(),
+                "stoneId", stoneId,
+                "by", seat.getColor().lower()));
+
+        // 건 사람에게만 지금 알린다. 상대에게는 그가 실제로 칠 때 함께 보낸다.
+        listener.send(seat, message);
+
+        Seat opponent = other(seat);
+        if (opponent != null) pendingReveals.add(new PendingReveal(opponent, message));
+
+        if (skill == Skill.GROW) seat.setArmedGrowStone(stoneId);
+    }
+
+    private record PendingReveal(Seat seat, Map<String, Object> message) {
+    }
+
     public synchronized void flick(Seat seat, int stoneId, double vx, double vy) {
         if (state != RoomState.PLAYING) throw GameException.badRequest("대국 중이 아닙니다.");
         if (seat.getColor() != turn) throw GameException.badRequest("자기 차례가 아닙니다.");
         if (!ownsStone(seat.getColor(), stoneId)) throw GameException.badRequest("자기 돌만 칠 수 있습니다.");
 
+        // GROW를 걸었으면 그 돌로 쳐야 한다. 다른 돌을 치면 건 스킬이 사라진다.
+        if (seat.getArmedGrowStone() != null && seat.getArmedGrowStone() != stoneId) {
+            throw GameException.badRequest("스킬을 건 돌로 쳐야 합니다.");
+        }
+
+        seat.setArmedGrowStone(null);
         seat.setConsecutiveTimeouts(0);
         cancelTurnTimer();
+
+        // 숨겨둔 스킬을 지금 공개한다. 치는 사람은 이미 조준을 마쳤으므로
+        // 이 시점에 알아도 이번 샷을 고칠 수 없다. 순서가 중요하다 —
+        // 스킬을 먼저 반영해야 뒤이은 FLICK을 같은 조건에서 계산한다.
+        for (PendingReveal reveal : pendingReveals) {
+            listener.send(reveal.seat(), reveal.message());
+        }
+        pendingReveals.clear();
+
+        shotInProgress = true;
 
         // 친 사람에게도 그대로 돌려준다. 양쪽이 완전히 같은 값으로 시뮬레이션해야
         // 해시가 맞는다 — 보낸 쪽이 자기 로컬 값을 쓰면 미세하게 갈라질 수 있다.
@@ -220,9 +290,9 @@ public class Room {
 
         seat.setReport(null);
         opponent.setReport(null);
+        shotInProgress = false;
 
-        if (!mine.hash().equals(theirs.hash())
-                || !java.util.Objects.equals(mine.firstZero(), theirs.firstZero())) {
+        if (!mine.hash().equals(theirs.hash()) || !java.util.Objects.equals(mine.firstZero(), theirs.firstZero())) {
             // 한쪽이 조작됐거나 시뮬레이션이 갈라졌다. 어느 쪽이 옳은지 서버는
             // 알 수 없으므로 승패를 내지 않고 무효 처리한다.
             state = RoomState.FINISHED;

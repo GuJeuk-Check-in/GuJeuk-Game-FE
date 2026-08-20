@@ -27,12 +27,33 @@ public class Seat {
     @Setter
     private int consecutiveTimeouts;
 
+    /**
+     * 이미 쓴 스킬. 클라에서도 버튼을 잠그지만 여기서 다시 본다 —
+     * 클라만 막으면 고친 클라로 계속 쓸 수 있다.
+     */
+    private final java.util.EnumSet<Skill> usedSkills = java.util.EnumSet.noneOf(Skill.class);
+
+    /**
+     * GROW를 걸어둔 돌. 이 돌로 쳐야 스킬이 성립한다.
+     * 다른 돌을 치면 건 스킬이 공중에 뜨므로 아예 막는다.
+     */
+    @Setter
+    private Integer armedGrowStone;
+
     public Seat(Long memberId, String nickname, int rating, Player color, WebSocketSession session) {
         this.memberId = memberId;
         this.nickname = nickname;
         this.rating = rating;
         this.color = color;
         this.session = session;
+    }
+
+    public boolean hasUsed(Skill skill) {
+        return usedSkills.contains(skill);
+    }
+
+    public void markUsed(Skill skill) {
+        usedSkills.add(skill);
     }
 
     public boolean isConnected() {

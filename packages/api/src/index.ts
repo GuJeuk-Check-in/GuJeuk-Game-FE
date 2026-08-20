@@ -13,4 +13,11 @@ export { createAuthApi } from './auth'
 export type { AuthApi, AuthResult, Credentials, Profile, RankingEntry } from './auth'
 
 export { createGameSocket } from './socket'
-export type { GameSocket, GameSocketOptions, PlacedStone, Player, ServerMessage } from './socket'
+export type {
+  GameSocket,
+  GameSocketOptions,
+  PlacedStone,
+  Player,
+  ServerMessage,
+  Skill,
+} from './socket'
