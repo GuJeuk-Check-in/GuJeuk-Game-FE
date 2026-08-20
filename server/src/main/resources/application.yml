@@ -7,3 +7,26 @@ spring:
     name: gujuck-game-server
   jackson:
     time-zone: Asia/Seoul
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:13306/gujuck_game?serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${DB_USER:game}
+    password: ${DB_PASSWORD:game}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      # 스키마는 Flyway가 만든다. Hibernate가 손대면 두 곳이 서로를 덮어쓴다.
+      ddl-auto: validate
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+game:
+  jwt:
+    # 운영에서는 반드시 환경변수로 덮어쓴다.
+    secret: ${JWT_SECRET:gujuck-game-local-dev-secret-key-please-override-in-production}
+    expiration-seconds: 604800
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5170,http://localhost:5172,https://game.oijwef098234.com}

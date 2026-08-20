@@ -1,42 +1,56 @@
 import { Bodies, Body, Composite, Engine } from 'matter-js'
 import { GameLoop, PointerInput, clamp, distance } from '@gujuck/game-core'
 import type { CanvasStage, PointerPoint } from '@gujuck/game-core'
+import type { PlacedStone, Player } from '@gujuck/api'
 
 /** 물리 세계의 논리 크기. 화면 크기가 바뀌어도 이 값은 변하지 않는다. */
 const BOARD = 600
 const STONE_RADIUS = 24
 const MAX_PULL = 150
+const STONE_COUNT = 5
 /**
  * 최대 세기로 튕겼을 때의 초기 속도(스텝당 이동 픽셀).
  *
- * 실측으로 정한 값이다. 17이면 240 정도 떨어진 돌을 맞혀 판(600) 밖으로
- * 밀어내고 약 2.7초 만에 멈춘다. 그리고 돌 지름(48)보다 작아야 한다 —
- * matter.js에는 연속 충돌 검사가 없어서 한 스텝 이동 거리가 지름을 넘으면
- * 돌끼리 그냥 통과해버린다.
+ * 실측으로 정한 값이다. 그리고 돌 지름(48)보다 작아야 한다 — matter.js에는
+ * 연속 충돌 검사가 없어서 한 스텝 이동 거리가 지름을 넘으면 돌끼리 그냥
+ * 통과해버린다. 돌이 5개로 늘어 배치가 촘촘해질수록 이 위험은 커지므로
+ * 상한을 올리지 않는다.
  */
 const MAX_FLICK_SPEED = 17
 /** 이 속도 아래면 멈춘 것으로 본다. */
 const REST_SPEED = 0.12
 
-export type Player = 'black' | 'white'
+export type Mode = 'placement' | 'playing' | 'over'
 
 export interface AlkkagiSnapshot {
-  turn: Player
+  mode: Mode
+  turn: Player | null
   black: number
   white: number
-  winner: Player | null
   /** 돌이 아직 굴러가는 중이면 true. UI에서 입력을 막는 데 쓴다. */
   settling: boolean
-}
-
-interface Stone {
-  body: Body
-  owner: Player
+  /** 배치 단계에서 5개가 모두 규칙에 맞게 놓였는지. */
+  placementValid: boolean
 }
 
 export interface AlkkagiGameOptions {
   stage: CanvasStage
+  myColor: Player
   onChange: (snapshot: AlkkagiSnapshot) => void
+  /**
+   * 내가 돌을 튕겼을 때. **여기서 바로 물리에 반영하지 않는다.**
+   * 서버가 되돌려준 값을 applyFlick으로 받아야 양쪽이 완전히 같은 입력으로
+   * 시뮬레이션한다. 보낸 쪽만 자기 로컬 값을 쓰면 미세하게 갈라진다.
+   */
+  onFlickRequest: (stoneId: number, vx: number, vy: number) => void
+  /** 돌이 다 멈췄을 때. 최종 상태 해시와 남은 돌 수를 서버로 보고한다. */
+  onSettled: (hash: string, black: number, white: number) => void
+}
+
+interface Stone {
+  id: number
+  body: Body
+  owner: Player
 }
 
 /**
@@ -44,32 +58,44 @@ export interface AlkkagiGameOptions {
  *
  * 여기가 물리 엔진(matter.js)에 의존하는 유일한 계층이다. matter.js는 이
  * 파일 밖으로 새어나가지 않고, @gujuck/game-core는 물리 엔진의 존재를 모른다.
- * 그래서 양궁이 다른 물리 구현을 쓰더라도 서로 간섭하지 않는다.
  *
  * 위에서 내려다보는 시점이라 중력은 0이다. 대신 frictionAir로 바닥 마찰을
  * 흉내 낸다 — 중력을 켜면 돌이 화면 아래로 쏟아진다.
+ *
+ * 온라인 대전에서는 양쪽 클라가 이 클래스를 각자 돌린다. 같은 입력에서 같은
+ * 결과가 나와야 하므로 물리 갱신은 GameLoop의 고정 스텝에만 얹는다.
  */
 export class AlkkagiGame {
   private readonly stage: CanvasStage
+  private readonly myColor: Player
   private readonly onChange: (snapshot: AlkkagiSnapshot) => void
+  private readonly onFlickRequest: (stoneId: number, vx: number, vy: number) => void
+  private readonly onSettled: (hash: string, black: number, white: number) => void
+
   private readonly engine: Engine
   private readonly loop: GameLoop
   private readonly input: PointerInput
 
+  private mode: Mode = 'placement'
   private stones: Stone[] = []
-  private turn: Player = 'black'
-  private winner: Player | null = null
+  private turn: Player | null = null
   private settling = false
+
+  /** 배치 단계에서 끌고 다니는 좌표. 물리 바디를 만들기 전 단계다. */
+  private placement: PointerPoint[] = []
+  private placingIndex = -1
 
   private dragging: Stone | null = null
   private dragPoint: PointerPoint | null = null
 
   constructor(options: AlkkagiGameOptions) {
     this.stage = options.stage
+    this.myColor = options.myColor
     this.onChange = options.onChange
+    this.onFlickRequest = options.onFlickRequest
+    this.onSettled = options.onSettled
 
     this.engine = Engine.create({ gravity: { x: 0, y: 0, scale: 0 } })
-    this.reset()
 
     this.input = new PointerInput({
       target: this.stage.canvas,
@@ -79,27 +105,12 @@ export class AlkkagiGame {
     })
 
     this.loop = new GameLoop({
-      update: (dt) => this.update(dt),
+      update: (dtSec) => this.update(dtSec),
       render: () => this.render(),
     })
+
+    this.resetPlacement()
     this.loop.start()
-  }
-
-  reset(): void {
-    Composite.clear(this.engine.world, false)
-    this.stones = []
-    this.turn = 'black'
-    this.winner = null
-    this.settling = false
-
-    const gap = BOARD / 5
-    for (let i = 0; i < 4; i += 1) {
-      const x = gap * (i + 1)
-      this.addStone('black', x, BOARD - gap)
-      this.addStone('white', x, gap)
-    }
-
-    this.emit()
   }
 
   destroy(): void {
@@ -109,8 +120,86 @@ export class AlkkagiGame {
     Engine.clear(this.engine)
   }
 
-  private addStone(owner: Player, x: number, y: number): void {
-    const body = Bodies.circle(x, y, STONE_RADIUS, {
+  // ---- 배치 단계 ---------------------------------------------------------
+
+  /** 자기 진영 안에 기본 배치를 깔아둔다. 사용자는 여기서부터 끌어 옮긴다. */
+  private resetPlacement(): void {
+    const gap = BOARD / (STONE_COUNT + 1)
+    const y = this.myColor === 'black' ? BOARD - gap : gap
+
+    this.placement = Array.from({ length: STONE_COUNT }, (_, i) => ({ x: gap * (i + 1), y }))
+    this.mode = 'placement'
+    this.emit()
+  }
+
+  /** 서버로 보낼 배치 좌표. */
+  getPlacement(): PointerPoint[] {
+    return this.placement.map((point) => ({ ...point }))
+  }
+
+  /** 내 진영 y 범위. 배치 가능 영역을 그리고 검사하는 데 함께 쓴다. */
+  private myHalf(): { min: number; max: number } {
+    const half = BOARD / 2
+    return this.myColor === 'black'
+      ? { min: half + STONE_RADIUS, max: BOARD - STONE_RADIUS }
+      : { min: STONE_RADIUS, max: half - STONE_RADIUS }
+  }
+
+  private placementValid(): boolean {
+    const { min, max } = this.myHalf()
+
+    for (let i = 0; i < this.placement.length; i += 1) {
+      const a = this.placement[i]
+      if (a.y < min || a.y > max) return false
+      if (a.x < STONE_RADIUS || a.x > BOARD - STONE_RADIUS) return false
+
+      for (let j = i + 1; j < this.placement.length; j += 1) {
+        const b = this.placement[j]
+        if (distance(a.x, a.y, b.x, b.y) < STONE_RADIUS * 2) return false
+      }
+    }
+
+    return true
+  }
+
+  // ---- 대국 -------------------------------------------------------------
+
+  /** 서버가 확정한 배치와 선공으로 판을 시작한다. 양쪽이 같은 값을 받는다. */
+  startGame(stones: PlacedStone[], turn: Player): void {
+    Composite.clear(this.engine.world, false)
+    this.stones = stones.map((stone) => this.createStone(stone))
+    this.mode = 'playing'
+    this.turn = turn
+    this.settling = false
+    this.emit()
+  }
+
+  setTurn(turn: Player): void {
+    this.turn = turn
+    this.settling = false
+    this.emit()
+  }
+
+  finish(): void {
+    this.mode = 'over'
+    this.emit()
+  }
+
+  /** 서버가 중계한 튕기기를 물리에 반영한다. 친 사람에게도 이 경로로 돌아온다. */
+  applyFlick(stoneId: number, vx: number, vy: number): void {
+    const stone = this.stones.find((s) => s.id === stoneId)
+    if (!stone) return
+
+    // applyForce가 아니라 setVelocity를 쓴다. matter.js의 힘은 질량과 타임스텝
+    // 제곱에 얽혀 있어 "얼마나 세게"가 직관적으로 안 잡히고, 조금만 키워도 돌이
+    // 한 프레임에 수천 픽셀을 날아가 상대를 관통한다.
+    Body.setVelocity(stone.body, { x: vx, y: vy })
+    this.settling = true
+    this.emit()
+  }
+
+  private createStone(stone: PlacedStone): Stone {
+    const body = Bodies.circle(stone.x, stone.y, STONE_RADIUS, {
       restitution: 0.82,
       friction: 0,
       // 바닥 마찰 대용. 값이 크면 금방 멈추고, 작으면 미끄러진다.
@@ -118,10 +207,12 @@ export class AlkkagiGame {
       density: 0.0016,
     })
     Composite.add(this.engine.world, body)
-    this.stones.push({ body, owner })
+    return { id: stone.id, body, owner: stone.owner }
   }
 
   private update(dtSec: number): void {
+    if (this.mode !== 'playing') return
+
     Engine.update(this.engine, dtSec * 1000)
 
     // 판 밖으로 나간 돌을 제거한다. 벽이 없는 게 알까기의 핵심 규칙이다.
@@ -143,23 +234,28 @@ export class AlkkagiGame {
     const moving = this.stones.some((s) => Body.getSpeed(s.body) > REST_SPEED)
 
     if (this.settling && !moving) {
-      // 다 멈췄으니 차례를 넘긴다. 굴러가는 도중에 넘기면 다음 사람이
-      // 아직 움직이는 돌을 칠 수 있어 순서가 무너진다.
+      // 다 멈췄으니 결과를 보고한다. 턴을 여기서 넘기지 않는다 — 순서는
+      // 서버가 양쪽 보고를 대조한 뒤에 정한다.
       this.settling = false
-      this.turn = this.turn === 'black' ? 'white' : 'black'
-      this.checkWinner()
+      this.onSettled(this.hash(), this.count('black'), this.count('white'))
       this.emit()
     } else if (removed) {
-      this.checkWinner()
       this.emit()
     }
   }
 
-  private checkWinner(): void {
-    const black = this.count('black')
-    const white = this.count('white')
-    if (black === 0) this.winner = 'white'
-    else if (white === 0) this.winner = 'black'
+  /**
+   * 최종 상태를 한 줄로 만든다. 양쪽 클라가 같은 값을 내야 정상이다.
+   *
+   * 소수점을 그대로 쓰면 마지막 자리 차이만으로 디싱크가 뜬다. 눈에 보이지
+   * 않는 수준(0.1px)까지만 남기고 자른다.
+   */
+  private hash(): string {
+    return this.stones
+      .slice()
+      .sort((a, b) => a.id - b.id)
+      .map((s) => `${s.id}:${s.body.position.x.toFixed(1)},${s.body.position.y.toFixed(1)}`)
+      .join('|')
   }
 
   private count(owner: Player): number {
@@ -168,23 +264,36 @@ export class AlkkagiGame {
 
   private emit(): void {
     this.onChange({
+      mode: this.mode,
       turn: this.turn,
-      black: this.count('black'),
-      white: this.count('white'),
-      winner: this.winner,
+      black: this.mode === 'placement' ? STONE_COUNT : this.count('black'),
+      white: this.mode === 'placement' ? STONE_COUNT : this.count('white'),
       settling: this.settling,
+      placementValid: this.mode === 'placement' ? this.placementValid() : true,
     })
+  }
+
+  private get myTurn(): boolean {
+    return this.mode === 'playing' && this.turn === this.myColor && !this.settling
   }
 
   // ---- 입력 -------------------------------------------------------------
 
   private handleDown(point: PointerPoint): void {
-    if (this.winner !== null || this.settling) return
-
     const world = this.toWorld(point)
+
+    if (this.mode === 'placement') {
+      this.placingIndex = this.placement.findIndex(
+        (p) => distance(world.x, world.y, p.x, p.y) <= STONE_RADIUS * 1.6,
+      )
+      return
+    }
+
+    if (!this.myTurn) return
+
     const hit = this.stones.find(
       (s) =>
-        s.owner === this.turn &&
+        s.owner === this.myColor &&
         distance(world.x, world.y, s.body.position.x, s.body.position.y) <= STONE_RADIUS * 1.6,
     )
     if (!hit) return
@@ -194,15 +303,37 @@ export class AlkkagiGame {
   }
 
   private handleMove(point: PointerPoint): void {
+    const world = this.toWorld(point)
+
+    if (this.mode === 'placement') {
+      if (this.placingIndex < 0) return
+
+      // 진영 밖으로는 아예 못 나가게 잡아둔다. 놓은 뒤에 빨간 경고를 띄우는
+      // 것보다 손끝에서 막히는 편이 이유가 분명하다.
+      const { min, max } = this.myHalf()
+      this.placement[this.placingIndex] = {
+        x: clamp(world.x, STONE_RADIUS, BOARD - STONE_RADIUS),
+        y: clamp(world.y, min, max),
+      }
+      this.emit()
+      return
+    }
+
     if (!this.dragging) return
-    this.dragPoint = this.toWorld(point)
+    this.dragPoint = world
   }
 
   private handleUp(point: PointerPoint): void {
+    if (this.mode === 'placement') {
+      this.placingIndex = -1
+      this.emit()
+      return
+    }
+
     const stone = this.dragging
     this.dragging = null
     this.dragPoint = null
-    if (!stone) return
+    if (!stone || !this.myTurn) return
 
     const world = this.toWorld(point)
     // 당긴 반대 방향으로 튕긴다(새총). 당긴 거리가 곧 세기다.
@@ -211,19 +342,8 @@ export class AlkkagiGame {
     const pulled = Math.hypot(dx, dy)
     if (pulled < 6) return
 
-    // applyForce가 아니라 setVelocity를 쓴다. matter.js의 힘은 질량과
-    // 타임스텝 제곱에 얽혀 있어 "얼마나 세게"가 직관적으로 안 잡히고,
-    // 조금만 키워도 돌이 한 프레임에 수천 픽셀을 날아가 상대를 관통한다.
-    // 튕기기는 순간 속도를 주는 동작이므로 속도를 직접 지정하는 편이
-    // 예측 가능하고 관통 위험도 상한으로 막을 수 있다.
     const speed = (clamp(pulled, 0, MAX_PULL) / MAX_PULL) * MAX_FLICK_SPEED
-    Body.setVelocity(stone.body, {
-      x: (dx / pulled) * speed,
-      y: (dy / pulled) * speed,
-    })
-
-    this.settling = true
-    this.emit()
+    this.onFlickRequest(stone.id, (dx / pulled) * speed, (dy / pulled) * speed)
   }
 
   // ---- 좌표 변환 --------------------------------------------------------
@@ -237,11 +357,11 @@ export class AlkkagiGame {
   /**
    * 화면 크기와 무관하게 판을 정사각형으로 유지하기 위한 변환값.
    * 물리 좌표를 화면 크기에 맞춰 바꾸면 리사이즈할 때마다 돌이 순간이동하므로,
-   * 세계는 고정하고 그리기만 스케일한다.
+   * 세계는 고정하고 그리기만 스케일한다. 반응형은 여기서 끝난다.
    */
   private viewport(): { scale: number; offsetX: number; offsetY: number } {
     const { width, height } = this.stage
-    const scale = (Math.min(width, height) * 0.92) / BOARD
+    const scale = (Math.min(width, height) * 0.94) / BOARD
     return {
       scale,
       offsetX: (width - BOARD * scale) / 2,
@@ -261,8 +381,18 @@ export class AlkkagiGame {
     ctx.translate(offsetX, offsetY)
     ctx.scale(scale, scale)
 
+    this.renderBoard(ctx)
+
+    if (this.mode === 'placement') this.renderPlacement(ctx)
+    else this.renderStones(ctx)
+
+    ctx.restore()
+  }
+
+  private renderBoard(ctx: CanvasRenderingContext2D): void {
     ctx.fillStyle = '#c98f4a'
     ctx.fillRect(0, 0, BOARD, BOARD)
+
     ctx.strokeStyle = 'rgba(60, 34, 12, 0.45)'
     ctx.lineWidth = 2
     for (let i = 1; i < 5; i += 1) {
@@ -275,6 +405,38 @@ export class AlkkagiGame {
       ctx.stroke()
     }
 
+    // 중앙선. 배치 단계에서 진영 경계가 어디인지가 가장 중요한 정보다.
+    ctx.strokeStyle = 'rgba(40, 20, 5, 0.7)'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(0, BOARD / 2)
+    ctx.lineTo(BOARD, BOARD / 2)
+    ctx.stroke()
+  }
+
+  private renderPlacement(ctx: CanvasRenderingContext2D): void {
+    const { min, max } = this.myHalf()
+
+    ctx.fillStyle = 'rgba(90, 200, 150, 0.14)'
+    ctx.fillRect(0, min - STONE_RADIUS, BOARD, max - min + STONE_RADIUS * 2)
+
+    const valid = this.placementValid()
+    for (const point of this.placement) {
+      this.drawStone(ctx, point.x, point.y, this.myColor)
+
+      if (!valid) {
+        ctx.beginPath()
+        ctx.arc(point.x, point.y, STONE_RADIUS + 3, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(255, 110, 110, 0.9)'
+        ctx.lineWidth = 3
+        ctx.stroke()
+      }
+    }
+  }
+
+  private renderStones(ctx: CanvasRenderingContext2D): void {
+    // 조준선은 당긴 쪽에만 그린다. 날아갈 방향에는 아무 표시도 하지 않는다 —
+    // 눈대중으로 겨누는 것이 이 게임의 재미다.
     if (this.dragging && this.dragPoint) {
       const { position } = this.dragging.body
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'
@@ -289,23 +451,25 @@ export class AlkkagiGame {
 
     for (const stone of this.stones) {
       const { x, y } = stone.body.position
-      ctx.beginPath()
-      ctx.arc(x, y, STONE_RADIUS, 0, Math.PI * 2)
-      ctx.fillStyle = stone.owner === 'black' ? '#1b1b1f' : '#f4f4f6'
-      ctx.fill()
-      ctx.lineWidth = 2
-      ctx.strokeStyle = stone.owner === 'black' ? '#3a3a45' : '#c3c3cc'
-      ctx.stroke()
+      this.drawStone(ctx, x, y, stone.owner)
 
-      if (stone.owner === this.turn && this.winner === null && !this.settling) {
+      if (stone.owner === this.myColor && this.myTurn) {
         ctx.beginPath()
-        ctx.arc(x, y, STONE_RADIUS + 6, 0, Math.PI * 2)
-        ctx.strokeStyle = 'rgba(77, 141, 255, 0.9)'
-        ctx.lineWidth = 3
+        ctx.arc(x, y, STONE_RADIUS + 5, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(120, 220, 255, 0.75)'
+        ctx.lineWidth = 2
         ctx.stroke()
       }
     }
+  }
 
-    ctx.restore()
+  private drawStone(ctx: CanvasRenderingContext2D, x: number, y: number, owner: Player): void {
+    ctx.beginPath()
+    ctx.arc(x, y, STONE_RADIUS, 0, Math.PI * 2)
+    ctx.fillStyle = owner === 'black' ? '#1b1b1f' : '#f4f4f6'
+    ctx.fill()
+    ctx.lineWidth = 2
+    ctx.strokeStyle = owner === 'black' ? '#3a3a45' : '#c3c3cc'
+    ctx.stroke()
   }
 }

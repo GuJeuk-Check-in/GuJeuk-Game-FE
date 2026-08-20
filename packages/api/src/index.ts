@@ -8,3 +8,9 @@
 export { createApiClient, ApiError } from './client'
 export type { ApiClient, ApiClientOptions } from './client'
 export { tokenStore } from './token'
+
+export { createAuthApi } from './auth'
+export type { AuthApi, AuthResult, Credentials, Profile, RankingEntry } from './auth'
+
+export { createGameSocket } from './socket'
+export type { GameSocket, GameSocketOptions, PlacedStone, Player, ServerMessage } from './socket'
