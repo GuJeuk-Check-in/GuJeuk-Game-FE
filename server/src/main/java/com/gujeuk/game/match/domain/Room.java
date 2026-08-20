@@ -207,10 +207,10 @@ public class Room {
         return stoneId >= base && stoneId < base + Placement.STONE_COUNT;
     }
 
-    public synchronized void turnEnd(Seat seat, String hash, int black, int white) {
+    public synchronized void turnEnd(Seat seat, String hash, int black, int white, Player firstZero) {
         if (state != RoomState.PLAYING) return;
 
-        seat.setReport(new Seat.TurnReport(hash, black, white));
+        seat.setReport(new Seat.TurnReport(hash, black, white, firstZero));
 
         Seat opponent = other(seat);
         if (opponent == null || opponent.getReport() == null) return;
@@ -221,7 +221,8 @@ public class Room {
         seat.setReport(null);
         opponent.setReport(null);
 
-        if (!mine.hash().equals(theirs.hash())) {
+        if (!mine.hash().equals(theirs.hash())
+                || !java.util.Objects.equals(mine.firstZero(), theirs.firstZero())) {
             // 한쪽이 조작됐거나 시뮬레이션이 갈라졌다. 어느 쪽이 옳은지 서버는
             // 알 수 없으므로 승패를 내지 않고 무효 처리한다.
             state = RoomState.FINISHED;
@@ -231,14 +232,28 @@ public class Room {
         }
 
         if (mine.black() == 0 || mine.white() == 0) {
-            Player winner = mine.black() == 0 ? Player.WHITE : Player.BLACK;
-            finish(winner, EndReason.KNOCKOUT);
+            finish(resolveLoser(mine).opponent(), EndReason.KNOCKOUT);
             return;
         }
 
         turn = turn.opponent();
         broadcast("TURN", Map.of("turn", turn.lower()));
         startTurnTimer();
+    }
+
+    /**
+     * 이번 턴에 진 쪽.
+     *
+     * 먼저 0개가 된 쪽이 진다. 마지막 한 개씩 남았을 때 친 돌과 맞은 돌이 함께
+     * 나가면 양쪽 다 0개가 되는데, 남은 개수만 보고 색으로 정하면 누가 쳤든
+     * 늘 같은 색이 지게 된다. 그래서 비워진 순서를 클라가 재서 보고한다.
+     *
+     * 정확히 같은 갱신에서 둘 다 비면 순서를 가릴 수 없다. 이때는 친 사람이
+     * 진다 — 자기 돌까지 같이 날린 책임을 지는 쪽이 자연스럽다.
+     */
+    private Player resolveLoser(Seat.TurnReport report) {
+        if (report.firstZero() != null) return report.firstZero();
+        return turn;
     }
 
     // ---- 종료 -------------------------------------------------------------

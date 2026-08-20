@@ -218,8 +218,8 @@ export function useMatch() {
     joinRoom: (code: string) => socketRef.current?.joinRoom(code.trim().toUpperCase()),
     place: (stones: { x: number; y: number }[]) => socketRef.current?.place(stones),
     flick: (stoneId: number, vx: number, vy: number) => socketRef.current?.flick(stoneId, vx, vy),
-    turnEnd: (hash: string, black: number, white: number) =>
-      socketRef.current?.turnEnd(hash, black, white),
+    turnEnd: (hash: string, black: number, white: number, firstZero: Player | null) =>
+      socketRef.current?.turnEnd(hash, black, white, firstZero),
     resign: () => socketRef.current?.resign(),
     backToLobby: () => {
       setPhase('lobby')

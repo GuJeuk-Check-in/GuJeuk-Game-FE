@@ -34,7 +34,7 @@ export interface GameSocket {
   joinRoom(code: string): void
   place(stones: { x: number; y: number }[]): void
   flick(stoneId: number, vx: number, vy: number): void
-  turnEnd(hash: string, black: number, white: number): void
+  turnEnd(hash: string, black: number, white: number, firstZero: Player | null): void
   resign(): void
   close(): void
   readonly isOpen: boolean
@@ -70,7 +70,8 @@ export function createGameSocket(options: GameSocketOptions): GameSocket {
     joinRoom: (code) => send({ type: 'JOIN_ROOM', code }),
     place: (stones) => send({ type: 'PLACE', stones }),
     flick: (stoneId, vx, vy) => send({ type: 'FLICK', stoneId, vx, vy }),
-    turnEnd: (hash, black, white) => send({ type: 'TURN_END', hash, black, white }),
+    turnEnd: (hash, black, white, firstZero) =>
+      send({ type: 'TURN_END', hash, black, white, firstZero }),
     resign: () => send({ type: 'RESIGN' }),
     close: () => socket.close(),
     get isOpen() {

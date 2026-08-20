@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gujeuk.game.global.error.GameException;
 import com.gujeuk.game.global.jwt.JwtTokenProvider;
+import com.gujeuk.game.match.domain.Player;
 import com.gujeuk.game.match.domain.Room;
 import com.gujeuk.game.match.domain.Seat;
 import com.gujeuk.game.match.domain.Stone;
@@ -97,10 +98,20 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                     seat,
                     node.path("hash").asText(),
                     node.path("black").asInt(),
-                    node.path("white").asInt()));
+                    node.path("white").asInt(),
+                    firstZero(node)));
             case "RESIGN" -> withSeat(connection, Room::resign);
             default -> send(session, Map.of("type", "ERROR", "message", "알 수 없는 요청입니다: " + type));
         }
+    }
+
+    /** 먼저 비운 색. 동시에 비었거나 아직 아무도 안 비었으면 null이다. */
+    private Player firstZero(JsonNode node) {
+        JsonNode value = node.path("firstZero");
+        if (value.isMissingNode() || value.isNull()) return null;
+
+        String text = value.asText();
+        return text.isBlank() ? null : Player.valueOf(text.toUpperCase());
     }
 
     private List<Stone> stones(JsonNode node) {

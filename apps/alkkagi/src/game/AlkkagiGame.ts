@@ -72,8 +72,15 @@ export interface AlkkagiGameOptions {
    * 시뮬레이션한다. 보낸 쪽만 자기 로컬 값을 쓰면 미세하게 갈라진다.
    */
   onFlickRequest: (stoneId: number, vx: number, vy: number) => void
-  /** 돌이 다 멈췄을 때. 최종 상태 해시와 남은 돌 수를 서버로 보고한다. */
-  onSettled: (hash: string, black: number, white: number) => void
+  /**
+   * 돌이 다 멈췄을 때. 최종 상태 해시와 남은 돌 수, 그리고 어느 쪽이 먼저
+   * 0개가 됐는지를 서버로 보고한다.
+   *
+   * firstZero가 필요한 이유는 마지막 한 개씩 남은 상황 때문이다. 친 돌과 맞은
+   * 돌이 함께 판을 나가면 양쪽 다 0개가 되는데, 남은 개수만 보고해서는 누가
+   * 먼저 비었는지 알 수 없다. 정확히 같은 순간이면 null이다.
+   */
+  onSettled: (hash: string, black: number, white: number, firstZero: Player | null) => void
 }
 
 interface Stone {
@@ -99,7 +106,12 @@ export class AlkkagiGame {
   private readonly myColor: Player
   private readonly onChange: (snapshot: AlkkagiSnapshot) => void
   private readonly onFlickRequest: (stoneId: number, vx: number, vy: number) => void
-  private readonly onSettled: (hash: string, black: number, white: number) => void
+  private readonly onSettled: (
+    hash: string,
+    black: number,
+    white: number,
+    firstZero: Player | null,
+  ) => void
 
   private readonly engine: Engine
   private readonly loop: GameLoop
@@ -124,6 +136,11 @@ export class AlkkagiGame {
    * 달라져 락스텝이 깨진다. 좌표 변환(toWorld)과 그리기에만 적용한다.
    */
   private readonly flipped: boolean
+
+  /** 물리 갱신 횟수. 어느 쪽이 먼저 비었는지 재는 시계다. */
+  private tick = 0
+  /** 각 색이 0개가 된 시점(tick). 아직이면 null. */
+  private zeroAt: Record<Player, number | null> = { black: null, white: null }
 
   private dragging: Stone | null = null
   private dragPoint: PointerPoint | null = null
@@ -286,6 +303,8 @@ export class AlkkagiGame {
     this.mode = 'playing'
     this.turn = turn
     this.settling = false
+    this.tick = 0
+    this.zeroAt = { black: null, white: null }
     this.emit()
   }
 
@@ -334,12 +353,32 @@ export class AlkkagiGame {
   private update(dtSec: number): void {
     if (this.mode !== 'playing') return
 
+    // 탈락 검사를 분할 갱신 **안에서** 한다. 마지막 한 개씩 남아 함께 나가는
+    // 상황에서 누가 먼저 비었는지를 프레임보다 잘게 가려내야 하기 때문이다.
     const stepMs = (dtSec * 1000) / PHYSICS_SUBSTEPS
+    let removed = false
     for (let i = 0; i < PHYSICS_SUBSTEPS; i += 1) {
       Engine.update(this.engine, stepMs)
+      if (this.removeFallenStones()) removed = true
     }
 
-    // 판 밖으로 나간 돌을 제거한다. 벽이 없는 게 알까기의 핵심 규칙이다.
+    const moving = this.stones.some((s) => Body.getSpeed(s.body) > REST_SPEED)
+
+    if (this.settling && !moving) {
+      // 다 멈췄으니 결과를 보고한다. 턴을 여기서 넘기지 않는다 — 순서는
+      // 서버가 양쪽 보고를 대조한 뒤에 정한다.
+      this.settling = false
+      this.onSettled(this.hash(), this.count('black'), this.count('white'), this.firstZero())
+      this.emit()
+    } else if (removed) {
+      this.emit()
+    }
+  }
+
+  /** 판 밖으로 나간 돌을 지운다. 벽이 없는 게 알까기의 핵심 규칙이다. */
+  private removeFallenStones(): boolean {
+    this.tick += 1
+
     const survivors: Stone[] = []
     for (const stone of this.stones) {
       const { x, y } = stone.body.position
@@ -350,20 +389,34 @@ export class AlkkagiGame {
       else survivors.push(stone)
     }
 
-    const removed = survivors.length !== this.stones.length
+    if (survivors.length === this.stones.length) return false
     this.stones = survivors
 
-    const moving = this.stones.some((s) => Body.getSpeed(s.body) > REST_SPEED)
-
-    if (this.settling && !moving) {
-      // 다 멈췄으니 결과를 보고한다. 턴을 여기서 넘기지 않는다 — 순서는
-      // 서버가 양쪽 보고를 대조한 뒤에 정한다.
-      this.settling = false
-      this.onSettled(this.hash(), this.count('black'), this.count('white'))
-      this.emit()
-    } else if (removed) {
-      this.emit()
+    for (const owner of ['black', 'white'] as const) {
+      if (this.zeroAt[owner] === null && this.count(owner) === 0) this.zeroAt[owner] = this.tick
     }
+
+    return true
+  }
+
+  /**
+   * 먼저 0개가 된 쪽. 그쪽이 진다.
+   *
+   * 마지막 한 개씩 남은 상태에서 친 돌과 맞은 돌이 함께 나가면 양쪽 다 0개가
+   * 된다. 남은 개수만으로는 가릴 수 없어 비워진 시점을 비교한다.
+   * 정확히 같은 갱신에서 비면 null이고, 그때의 판정은 서버가 정한다.
+   */
+  private firstZero(): Player | null {
+    const { black, white } = this.zeroAt
+
+    if (black !== null && white !== null) {
+      if (black === white) return null
+      return black < white ? 'black' : 'white'
+    }
+
+    if (black !== null) return 'black'
+    if (white !== null) return 'white'
+    return null
   }
 
   /**
