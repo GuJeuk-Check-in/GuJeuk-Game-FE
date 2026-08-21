@@ -1,4 +1,5 @@
 import { GameShell, ResultOverlay } from '@gujuck/ui'
+import { MARKS_PER_PLAYER } from './game/rules'
 import { AI, HUMAN, useGame } from './game/useGame'
 import type { Mark, Mode } from './game/types'
 import './App.css'
@@ -16,7 +17,7 @@ import './App.css'
  */
 export default function App() {
   const game = useGame()
-  const { board, turn, mode, outcome, finished } = game
+  const { state, outcome, finished, mode, vanishing } = game
 
   return (
     <GameShell
@@ -30,31 +31,43 @@ export default function App() {
         </div>
       }
       footer={
-        <div className="ttt-status">{statusText(mode, turn, outcome.winner, outcome.draw)}</div>
+        <div className="ttt-footer">
+          <div className="ttt-status">{statusText(mode, state.turn, outcome.winner)}</div>
+          <div className="ttt-rule">
+            한 사람당 {MARKS_PER_PLAYER}개까지 · 넘치면 가장 오래된 말이 사라져요
+          </div>
+        </div>
       }
     >
       <div className="ttt-stage">
         <div className="ttt-board" role="grid" aria-label="틱택토 판">
-          {board.map((cell, index) => (
-            <button
-              key={index}
-              type="button"
-              role="gridcell"
-              className={`ttt-cell ${outcome.line?.includes(index) ? 'is-win' : ''}`}
-              onClick={() => game.place(index)}
-              disabled={finished || cell !== null}
-              aria-label={`${index + 1}번 칸 ${cell ?? '빈 칸'}`}
-            >
-              {cell}
-            </button>
-          ))}
+          {state.board.map((cell, index) => {
+            const isWin = outcome.line?.includes(index) ?? false
+            // 지금 차례인 쪽이 한 수 두면 이 칸이 비워진다. 예고 없이 사라지면
+            // 규칙을 모르는 사람은 버그로 받아들이므로 미리 흐리게 보여준다.
+            const isVanishing = !finished && vanishing === index
+
+            return (
+              <button
+                key={index}
+                type="button"
+                role="gridcell"
+                className={`ttt-cell ${isWin ? 'is-win' : ''} ${isVanishing ? 'is-vanishing' : ''}`}
+                onClick={() => game.place(index)}
+                disabled={finished || cell !== null}
+                aria-label={cellLabel(index, cell, isVanishing)}
+              >
+                {cell}
+              </button>
+            )
+          })}
         </div>
       </div>
 
       <ResultOverlay
         open={finished}
-        title={resultTitle(mode, outcome.winner, outcome.draw)}
-        description={outcome.draw ? '더 둘 곳이 없어요.' : undefined}
+        title={resultTitle(mode, outcome.winner)}
+        description="세 칸을 먼저 이었어요."
         primaryLabel="다시 하기"
         onPrimary={game.reset}
       />
@@ -81,15 +94,19 @@ function ModeButton({ current, value, label, onSelect }: ModeButtonProps) {
   )
 }
 
-function statusText(mode: Mode, turn: Mark, winner: Mark | null, draw: boolean): string {
+function cellLabel(index: number, cell: Mark | null, vanishing: boolean): string {
+  const where = `${index + 1}번 칸`
+  if (cell === null) return `${where} 빈 칸`
+  return vanishing ? `${where} ${cell}, 다음 수에 사라짐` : `${where} ${cell}`
+}
+
+function statusText(mode: Mode, turn: Mark, winner: Mark | null): string {
   if (winner !== null) return `${winner} 승리`
-  if (draw) return '무승부'
   if (mode === 'solo') return turn === HUMAN ? '내 차례 (X)' : 'AI가 생각 중…'
   return `${turn} 차례`
 }
 
-function resultTitle(mode: Mode, winner: Mark | null, draw: boolean): string {
-  if (draw) return '무승부'
+function resultTitle(mode: Mode, winner: Mark | null): string {
   if (mode === 'solo') return winner === AI ? '졌어요 😢' : '이겼어요! 🎉'
   return `${winner} 승리! 🎉`
 }

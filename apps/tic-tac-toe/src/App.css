@@ -75,3 +75,29 @@
   font-size: 14px;
   font-weight: 600;
 }
+
+.ttt-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: center;
+}
+
+.ttt-rule {
+  color: var(--gj-text-dim);
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+/*
+ * 다음 수에 사라질 말.
+ *
+ * 예고 없이 말이 없어지면 규칙을 모르는 사람은 버그로 본다. 색을 빼고
+ * 점선 테두리를 둘러 "곧 없어진다"를 눈에 띄게 하되, 아직 판 위에 있는
+ * 말이므로 완전히 숨기지는 않는다.
+ */
+.ttt-cell.is-vanishing {
+  opacity: 0.38;
+  border-style: dashed;
+  border-color: var(--gj-accent);
+}
