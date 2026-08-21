@@ -101,3 +101,226 @@
   border-style: dashed;
   border-color: var(--gj-accent);
 }
+
+/* ---- 카드형 화면 (로그인 · 방 코드) -------------------------------------- */
+
+.ttt-center {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.ttt-card {
+  width: min(100%, 22rem);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  background: var(--gj-surface);
+  border: 1px solid var(--gj-border);
+  border-radius: 20px;
+  text-align: center;
+}
+
+.ttt-card__title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.ttt-card__lead {
+  margin: 0;
+  color: var(--gj-text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ttt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--gj-text-dim);
+}
+
+.ttt-field input,
+.ttt-join input {
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--gj-border);
+  background: #121826;
+  color: var(--gj-text);
+  /* iOS는 16px 미만 입력창에 포커스가 가면 화면을 확대한다. */
+  font-size: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ttt-field input:focus,
+.ttt-join input:focus {
+  outline: 2px solid var(--gj-accent);
+  outline-offset: 1px;
+}
+
+.ttt-error {
+  margin: 0;
+  color: #ff7b7b;
+  font-size: 13px;
+}
+
+.ttt-ghost {
+  background: transparent;
+  color: var(--gj-text-dim);
+}
+
+.ttt-btn--sm {
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+.ttt-code {
+  font-size: clamp(2rem, 12vw, 2.75rem);
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  /* 코드를 불러주는 상황이 많다. 숫자·글자 폭을 고르게. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 로비 ---------------------------------------------------------------- */
+
+.ttt-lobby {
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 16px 24px;
+  max-width: 26rem;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ttt-lobby__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ttt-lobby__name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ttt-lobby__rating {
+  color: var(--gj-text-dim);
+  font-size: 13px;
+}
+
+.ttt-join {
+  display: flex;
+  gap: 6px;
+}
+
+.ttt-join input {
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+
+.ttt-notice {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(77, 141, 255, 0.12);
+  color: var(--gj-accent);
+  font-size: 13px;
+}
+
+.ttt-rank__title {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gj-text-dim);
+}
+
+.ttt-rank__empty {
+  margin: 0;
+  color: var(--gj-text-dim);
+  font-size: 13px;
+}
+
+.ttt-rank {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ttt-rank__row {
+  display: grid;
+  /* 순위·점수·전적은 폭이 고정, 이름만 남는 공간을 먹는다. */
+  grid-template-columns: 1.75rem 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--gj-surface);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.ttt-rank__no {
+  color: var(--gj-text-dim);
+  text-align: center;
+}
+
+.ttt-rank__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ttt-rank__score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ttt-rank__wl {
+  color: var(--gj-text-dim);
+  font-size: 0.85em;
+}
+
+/* ---- 온라인 대국 --------------------------------------------------------- */
+
+.ttt-vs {
+  margin-left: 8px;
+  font-weight: 400;
+  font-size: 0.72em;
+  color: var(--gj-text-dim);
+}
+
+.ttt-delta {
+  margin-top: 6px;
+  font-weight: 700;
+  color: var(--gj-accent);
+}
+
+.ttt-toast {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 10px;
+  z-index: 5;
+  max-width: min(90%, 26rem);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(8, 11, 18, 0.92);
+  border: 1px solid var(--gj-border);
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+}

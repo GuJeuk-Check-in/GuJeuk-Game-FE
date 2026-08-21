@@ -93,7 +93,8 @@ public class TicTacToeRoom {
         listener.broadcast(this, Map.of(
                 "type", "GAME_START",
                 "board", game.boardView(),
-                "turn", game.getTurn().lower()));
+                "turn", game.getTurn().lower(),
+                "vanishing", vanishingView()));
     }
 
     // ---- 대국 -------------------------------------------------------------
@@ -124,6 +125,7 @@ public class TicTacToeRoom {
         message.put("vanished", vanished);
         message.put("board", game.boardView());
         message.put("turn", game.getTurn().lower());
+        message.put("vanishing", vanishingView());
         listener.broadcast(this, message);
 
         if (game.isOver()) {
@@ -175,7 +177,8 @@ public class TicTacToeRoom {
                 "type", "RESUMED",
                 "you", seat.getMark().lower(),
                 "board", game.boardView(),
-                "turn", game.getTurn().lower()));
+                "turn", game.getTurn().lower(),
+                "vanishing", vanishingView()));
 
         TicTacToeSeat opponent = opponentOf(seat);
         if (opponent != null) listener.send(opponent, Map.of("type", "OPPONENT_BACK"));
@@ -239,6 +242,19 @@ public class TicTacToeRoom {
 
     private boolean bothConnected() {
         return host != null && host.isConnected() && guest != null && guest.isConnected();
+    }
+
+    /**
+     * 각자 다음 수에 사라질 칸. 없으면 -1.
+     *
+     * 클라가 MOVE 기록을 쌓아 스스로 계산할 수도 있지만, 끊겼다 돌아온 사람은
+     * 그 기록이 없어서 예고가 틀어진다. 서버가 매번 알려주는 편이 확실하다.
+     */
+    private Map<String, Object> vanishingView() {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("x", game.vanishingCell(Mark.X));
+        view.put("o", game.vanishingCell(Mark.O));
+        return view;
     }
 
     private Map<String, Object> profile(TicTacToeSeat seat) {
