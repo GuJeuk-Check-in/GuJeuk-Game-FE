@@ -1,12 +1,13 @@
-package com.gujeuk.game.match.service;
+package com.gujeuk.game.tictactoe.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gujeuk.game.global.error.GameException;
-import com.gujeuk.game.match.domain.Room;
-import com.gujeuk.game.match.domain.RoomListener;
-import com.gujeuk.game.match.domain.Seat;
+import com.gujeuk.game.match.service.MatchResultService;
 import com.gujeuk.game.member.domain.EndReason;
 import com.gujeuk.game.member.domain.GameType;
+import com.gujeuk.game.tictactoe.domain.TicTacToeRoom;
+import com.gujeuk.game.tictactoe.domain.TicTacToeRoomListener;
+import com.gujeuk.game.tictactoe.domain.TicTacToeSeat;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,15 +26,16 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 방을 만들고 찾고 정리한다. 방이 바깥과 이야기할 때 쓰는 통로(RoomListener)이기도 하다.
+ * 틱택토 방을 만들고 찾고 정리한다. 방이 바깥과 이야기할 때 쓰는 통로이기도 하다.
  *
- * 방 상태는 메모리에만 있다. 서버가 내려가면 진행 중인 판은 사라지는데,
- * 한 판이 몇 분짜리라 DB에 넣어 얻는 것보다 잃는 게 크다. 끝난 판만 저장한다.
+ * 알까기의 RoomService와 뼈대가 같다(코드 생성·레지스트리·전송·스케줄). 지금은
+ * 각 게임이 자기 것을 갖고 있는데, 세 번째 게임이 붙는 시점에 공통으로 빼는 게
+ * 맞다. 지금 미리 빼면 알까기가 돌아가는 코드를 건드리는 위험이 이득보다 크다.
  */
 @Service
 @Slf4j
 @RequiredArgsConstructor
-public class RoomService implements RoomListener {
+public class TicTacToeRoomService implements TicTacToeRoomListener {
     /** 헷갈리는 글자(0/O, 1/I)를 뺀 코드용 알파벳. */
     private static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final int CODE_LENGTH = 6;
@@ -41,25 +43,35 @@ public class RoomService implements RoomListener {
     private final ObjectMapper objectMapper;
     private final MatchResultService matchResultService;
 
-    private final Map<String, Room> rooms = new ConcurrentHashMap<>();
+    private final Map<String, TicTacToeRoom> rooms = new ConcurrentHashMap<>();
     private final Random random = new SecureRandom();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
-    public Room create(Long memberId, String nickname, int rating, WebSocketSession session) {
+    public TicTacToeRoom create(Long memberId, String nickname, int rating, WebSocketSession session) {
         String code = generateCode();
-        Room room = new Room(code, this, random);
+        TicTacToeRoom room = new TicTacToeRoom(code, this, random);
         rooms.put(code, room);
 
         room.open(memberId, nickname, rating, session);
         return room;
     }
 
-    public Room join(String code, Long memberId, String nickname, int rating, WebSocketSession session) {
-        Room room = rooms.get(normalize(code));
+    public TicTacToeRoom join(String code, Long memberId, String nickname, int rating, WebSocketSession session) {
+        TicTacToeRoom room = rooms.get(normalize(code));
         if (room == null) throw GameException.badRequest("그런 방이 없습니다.");
 
         room.join(memberId, nickname, rating, session);
         return room;
+    }
+
+    /** 끊겼다 돌아온 사람이 원래 자리로 복귀할 방을 찾는다. 없으면 null. */
+    public TicTacToeRoom reconnect(Long memberId, WebSocketSession session) {
+        for (TicTacToeRoom room : rooms.values()) {
+            if (room.seatOf(memberId) != null && room.reconnect(memberId, session)) {
+                return room;
+            }
+        }
+        return null;
     }
 
     private String generateCode() {
@@ -80,10 +92,10 @@ public class RoomService implements RoomListener {
         return code == null ? "" : code.trim().toUpperCase();
     }
 
-    // ---- RoomListener -----------------------------------------------------
+    // ---- TicTacToeRoomListener --------------------------------------------
 
     @Override
-    public void send(Seat seat, Map<String, Object> message) {
+    public void send(TicTacToeSeat seat, Map<String, Object> message) {
         if (seat == null || !seat.isConnected()) return;
 
         try {
@@ -98,21 +110,21 @@ public class RoomService implements RoomListener {
     }
 
     @Override
-    public void broadcast(Room room, Map<String, Object> message) {
+    public void broadcast(TicTacToeRoom room, Map<String, Object> message) {
         send(room.getHost(), message);
         send(room.getGuest(), message);
     }
 
     @Override
     public RatingChange finish(Long winnerId, Long loserId, EndReason reason) {
-        // 이 방은 알까기 전용이다. 방(Room)은 자기가 무슨 게임인지 몰라도 되도록
-        // 게임 종류를 여기서 붙인다 — 덕분에 Room은 손대지 않고 둘 수 있다.
-        var result = matchResultService.apply(GameType.ALKKAGI, winnerId, loserId, reason);
+        // 이 방은 틱택토 전용이다. 방은 자기가 무슨 게임인지 몰라도 되도록
+        // 게임 종류를 여기서 붙인다.
+        var result = matchResultService.apply(GameType.TIC_TAC_TOE, winnerId, loserId, reason);
         return new RatingChange(result.delta(), result.winnerRating(), result.loserRating());
     }
 
     @Override
-    public void dispose(Room room) {
+    public void dispose(TicTacToeRoom room) {
         rooms.remove(room.getCode());
     }
 

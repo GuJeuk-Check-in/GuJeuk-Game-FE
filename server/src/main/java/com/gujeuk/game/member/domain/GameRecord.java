@@ -25,6 +25,11 @@ public class GameRecord {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /** 어느 게임의 전적인지. 게임마다 레이팅이 따로라 기록도 나뉘어야 한다. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "game", nullable = false, length = 20)
+    private GameType game;
+
     @Column(name = "winner_id", nullable = false)
     private Long winnerId;
 
@@ -49,6 +54,7 @@ public class GameRecord {
 
     @Builder
     private GameRecord(
+            GameType game,
             Long winnerId,
             Long loserId,
             int winnerRatingBefore,
@@ -56,6 +62,7 @@ public class GameRecord {
             int ratingDelta,
             EndReason endReason
     ) {
+        this.game = game;
         this.winnerId = winnerId;
         this.loserId = loserId;
         this.winnerRatingBefore = winnerRatingBefore;

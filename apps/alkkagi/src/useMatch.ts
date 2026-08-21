@@ -174,11 +174,17 @@ export function useMatch() {
     [handleMessage],
   )
 
-  /** 로그인 성공 직후. 토큰을 저장하고 소켓을 연다. */
+  /**
+   * 로그인 성공 직후. 토큰을 저장하고 소켓을 연다.
+   *
+   * 프로필은 여기서 채우지 않는다. 레이팅이 게임별로 갈리면서 로그인 응답은
+   * 신원만 돌려주므로, 알까기 레이팅은 소켓이 붙을 때 오는 READY가 채운다.
+   * 그때까지 로비는 '게스트 / 레이팅 -'로 보인다 — 틀린 숫자를 잠깐 보여주는
+   * 것보다 낫다.
+   */
   const authenticated = useCallback(
-    (token: string, next: Profile) => {
+    (token: string) => {
       tokenStore.set(token)
-      setProfile(next)
       connect(token)
     },
     [connect],

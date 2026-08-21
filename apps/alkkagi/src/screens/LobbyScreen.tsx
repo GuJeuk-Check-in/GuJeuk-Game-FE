@@ -16,7 +16,7 @@ export function LobbyScreen({ profile, notice, onCreateRoom, onJoinRoom, onLogou
 
   const loadRanking = useCallback(() => {
     authApi
-      .ranking()
+      .ranking('ALKKAGI')
       .then(setRanking)
       // 랭킹은 부가 정보다. 못 불러와도 방은 만들 수 있어야 하므로 조용히 넘긴다.
       .catch(() => setRanking([]))
