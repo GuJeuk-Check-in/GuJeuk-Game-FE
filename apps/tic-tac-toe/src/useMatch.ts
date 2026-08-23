@@ -133,6 +133,8 @@ export function useMatch() {
           // 끊겼다 돌아왔다. 판 전체를 다시 받으므로 그대로 덮어쓰면 된다.
           setMyMark(toMark(message.you))
           applyBoard(message)
+          // 새로고침하면 상대 정보가 날아가므로 서버가 다시 실어 보낸다.
+          if (message.opponent) setOpponent(message.opponent as OnlineProfile)
           setPhase('playing')
           setNotice('다시 연결됐습니다.')
           break

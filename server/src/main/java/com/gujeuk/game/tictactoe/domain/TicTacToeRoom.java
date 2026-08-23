@@ -47,6 +47,9 @@ public class TicTacToeRoom {
     /** 끊긴 사람을 기다리는 타이머. 돌아오면 취소한다. */
     private final Map<Long, TicTacToeRoomListener.Cancellable> pendingForfeits = new HashMap<>();
 
+    /** 상대를 기다리는 중에 방장이 끊겼을 때 방을 치우는 타이머. 돌아오면 취소한다. */
+    private TicTacToeRoomListener.Cancellable pendingDispose;
+
     public TicTacToeRoom(String code, TicTacToeRoomListener listener, Random random) {
         this.code = code;
         this.listener = listener;
@@ -72,6 +75,12 @@ public class TicTacToeRoom {
         }
         if (state != TicTacToeRoomState.WAITING || guest != null) {
             throw GameException.conflict("이미 시작했거나 자리가 없는 방입니다.");
+        }
+
+        // 방장이 잠깐 끊긴 사이에 들어올 수도 있다. 그 경우 방을 치우면 안 된다.
+        if (pendingDispose != null) {
+            pendingDispose.cancel();
+            pendingDispose = null;
         }
 
         guest = new TicTacToeSeat(memberId, nickname, rating, host.getMark().opponent(), session);
@@ -150,8 +159,10 @@ public class TicTacToeRoom {
         }
 
         if (state == TicTacToeRoomState.WAITING) {
-            // 상대가 오기 전에 방장이 나가면 방을 남길 이유가 없다.
-            listener.dispose(this);
+            // 여기서 바로 폐기하면 방장이 새로고침만 해도 방이 사라진다. 코드를
+            // 이미 알려준 뒤라면 상대는 "그런 방이 없습니다"만 보게 되고, 알려준
+            // 쪽도 왜 안 되는지 알 수 없다. 대국 중과 같은 유예를 준다.
+            pendingDispose = listener.schedule(this::disposeIfAbandoned, RECONNECT_GRACE_SEC);
             return;
         }
 
@@ -173,17 +184,46 @@ public class TicTacToeRoom {
         TicTacToeRoomListener.Cancellable pending = pendingForfeits.remove(memberId);
         if (pending != null) pending.cancel();
 
-        listener.send(seat, Map.of(
-                "type", "RESUMED",
-                "you", seat.getMark().lower(),
-                "board", game.boardView(),
-                "turn", game.getTurn().lower(),
-                "vanishing", vanishingView()));
+        if (pendingDispose != null) {
+            pendingDispose.cancel();
+            pendingDispose = null;
+        }
+
+        // 아직 상대를 기다리는 중이었다면 방 코드 화면으로 되돌린다. 새로 만든
+        // 방과 상태가 같으므로 같은 메시지를 다시 보낸다.
+        if (state == TicTacToeRoomState.WAITING) {
+            listener.send(seat, Map.of(
+                    "type", "ROOM_CREATED",
+                    "code", code,
+                    "you", seat.getMark().lower()));
+            return true;
+        }
 
         TicTacToeSeat opponent = opponentOf(seat);
+
+        Map<String, Object> resumed = new LinkedHashMap<>();
+        resumed.put("type", "RESUMED");
+        resumed.put("you", seat.getMark().lower());
+        resumed.put("board", game.boardView());
+        resumed.put("turn", game.getTurn().lower());
+        resumed.put("vanishing", vanishingView());
+        // 상대 정보도 같이 보낸다. 새로고침하면 클라의 상대 정보가 날아가서
+        // 이게 없으면 대국 화면에 상대 이름이 "상대"로만 남는다.
+        resumed.put("opponent", opponent == null ? null : profile(opponent));
+        listener.send(seat, resumed);
+
         if (opponent != null) listener.send(opponent, Map.of("type", "OPPONENT_BACK"));
 
         return true;
+    }
+
+    /** 유예 시간이 지나도 방장이 돌아오지 않았고 상대도 없으면 방을 치운다. */
+    private synchronized void disposeIfAbandoned() {
+        pendingDispose = null;
+        if (state != TicTacToeRoomState.WAITING) return;
+        if (host != null && host.isConnected()) return;
+
+        listener.dispose(this);
     }
 
     private synchronized void forfeit(TicTacToeSeat seat) {
