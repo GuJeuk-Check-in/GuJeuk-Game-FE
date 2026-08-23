@@ -127,6 +127,9 @@ export function useMatch() {
           setProfile((current) =>
             current ? { ...current, rating: message.rating as number } : current,
           )
+          // 판이 끝나면 진행 중 안내는 치운다. 몰수패로 끝난 경우 "30초 안에
+          // 돌아오지 않으면 승리합니다"가 결과 뒤에 그대로 남는다.
+          setNotice('')
           break
 
         case 'RESUMED':
