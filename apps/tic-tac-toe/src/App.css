@@ -36,6 +36,14 @@
 .ttt-board {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  /*
+   * 행도 반드시 1fr로 못박는다.
+   *
+   * 이걸 빼면 행 높이가 내용을 따라간다. 빈 칸만 있을 때는 아홉 칸이 고르지만
+   * 말을 하나 두는 순간 그 행만 글자 높이만큼 늘어나고(측정: 174px 대 95px)
+   * 판 전체 크기는 고정이라 나머지 행이 찌그러진다.
+   */
+  grid-template-rows: repeat(3, 1fr);
   gap: 8px;
   /* 세로가 짧은 화면에서도 판이 잘리지 않도록 가로·세로 중 작은 쪽을 따른다. */
   width: min(100%, 60vh, 380px);
@@ -53,6 +61,18 @@
   cursor: pointer;
   touch-action: manipulation;
   transition: background 0.12s ease;
+
+  /*
+   * 그리드 항목의 기본 최소 크기는 auto(=내용 크기)라 1fr보다 커질 수 있다.
+   * 0으로 낮춰야 칸이 배분된 크기를 넘지 않는다.
+   */
+  min-width: 0;
+  min-height: 0;
+  /* 버튼 기본 패딩과 줄간격이 글자를 밀어낸다. 직접 가운데 정렬한다. */
+  padding: 0;
+  line-height: 1;
+  display: grid;
+  place-items: center;
 }
 
 .ttt-cell:disabled {
