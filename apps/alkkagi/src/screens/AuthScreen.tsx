@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import { ApiError } from '@gujuck/api'
-import type { Profile } from '@gujuck/api'
 import { authApi } from '../api'
 
 interface Props {
-  onAuthenticated: (token: string, profile: Profile) => void
+  onAuthenticated: (token: string) => void
 }
 
 export function AuthScreen({ onAuthenticated }: Props) {
@@ -22,7 +21,7 @@ export function AuthScreen({ onAuthenticated }: Props) {
     try {
       const call = mode === 'login' ? authApi.login : authApi.signUp
       const result = await call({ nickname: nickname.trim(), password })
-      onAuthenticated(result.token, result)
+      onAuthenticated(result.token)
     } catch (caught) {
       // 서버가 message를 실어 보내므로 그대로 보여준다. 그 외에는 네트워크 문제다.
       setError(caught instanceof ApiError ? caught.message : '서버에 연결하지 못했습니다.')

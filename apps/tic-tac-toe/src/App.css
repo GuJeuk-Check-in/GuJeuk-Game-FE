@@ -36,6 +36,14 @@
 .ttt-board {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  /*
+   * 행도 반드시 1fr로 못박는다.
+   *
+   * 이걸 빼면 행 높이가 내용을 따라간다. 빈 칸만 있을 때는 아홉 칸이 고르지만
+   * 말을 하나 두는 순간 그 행만 글자 높이만큼 늘어나고(측정: 174px 대 95px)
+   * 판 전체 크기는 고정이라 나머지 행이 찌그러진다.
+   */
+  grid-template-rows: repeat(3, 1fr);
   gap: 8px;
   /* 세로가 짧은 화면에서도 판이 잘리지 않도록 가로·세로 중 작은 쪽을 따른다. */
   width: min(100%, 60vh, 380px);
@@ -53,6 +61,18 @@
   cursor: pointer;
   touch-action: manipulation;
   transition: background 0.12s ease;
+
+  /*
+   * 그리드 항목의 기본 최소 크기는 auto(=내용 크기)라 1fr보다 커질 수 있다.
+   * 0으로 낮춰야 칸이 배분된 크기를 넘지 않는다.
+   */
+  min-width: 0;
+  min-height: 0;
+  /* 버튼 기본 패딩과 줄간격이 글자를 밀어낸다. 직접 가운데 정렬한다. */
+  padding: 0;
+  line-height: 1;
+  display: grid;
+  place-items: center;
 }
 
 .ttt-cell:disabled {
@@ -74,4 +94,253 @@
   color: var(--gj-text-dim);
   font-size: 14px;
   font-weight: 600;
+}
+
+.ttt-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: center;
+}
+
+.ttt-rule {
+  color: var(--gj-text-dim);
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+/*
+ * 다음 수에 사라질 말.
+ *
+ * 예고 없이 말이 없어지면 규칙을 모르는 사람은 버그로 본다. 색을 빼고
+ * 점선 테두리를 둘러 "곧 없어진다"를 눈에 띄게 하되, 아직 판 위에 있는
+ * 말이므로 완전히 숨기지는 않는다.
+ */
+.ttt-cell.is-vanishing {
+  opacity: 0.38;
+  border-style: dashed;
+  border-color: var(--gj-accent);
+}
+
+/* ---- 카드형 화면 (로그인 · 방 코드) -------------------------------------- */
+
+.ttt-center {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.ttt-card {
+  width: min(100%, 22rem);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  background: var(--gj-surface);
+  border: 1px solid var(--gj-border);
+  border-radius: 20px;
+  text-align: center;
+}
+
+.ttt-card__title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.ttt-card__lead {
+  margin: 0;
+  color: var(--gj-text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ttt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--gj-text-dim);
+}
+
+.ttt-field input,
+.ttt-join input {
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--gj-border);
+  background: #121826;
+  color: var(--gj-text);
+  /* iOS는 16px 미만 입력창에 포커스가 가면 화면을 확대한다. */
+  font-size: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ttt-field input:focus,
+.ttt-join input:focus {
+  outline: 2px solid var(--gj-accent);
+  outline-offset: 1px;
+}
+
+.ttt-error {
+  margin: 0;
+  color: #ff7b7b;
+  font-size: 13px;
+}
+
+.ttt-ghost {
+  background: transparent;
+  color: var(--gj-text-dim);
+}
+
+.ttt-btn--sm {
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+.ttt-code {
+  font-size: clamp(2rem, 12vw, 2.75rem);
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  /* 코드를 불러주는 상황이 많다. 숫자·글자 폭을 고르게. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 로비 ---------------------------------------------------------------- */
+
+.ttt-lobby {
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 16px 24px;
+  max-width: 26rem;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ttt-lobby__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ttt-lobby__name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ttt-lobby__rating {
+  color: var(--gj-text-dim);
+  font-size: 13px;
+}
+
+.ttt-join {
+  display: flex;
+  gap: 6px;
+}
+
+.ttt-join input {
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+
+.ttt-notice {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(77, 141, 255, 0.12);
+  color: var(--gj-accent);
+  font-size: 13px;
+}
+
+.ttt-rank__title {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gj-text-dim);
+}
+
+.ttt-rank__empty {
+  margin: 0;
+  color: var(--gj-text-dim);
+  font-size: 13px;
+}
+
+.ttt-rank {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ttt-rank__row {
+  display: grid;
+  /* 순위·점수·전적은 폭이 고정, 이름만 남는 공간을 먹는다. */
+  grid-template-columns: 1.75rem 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--gj-surface);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.ttt-rank__no {
+  color: var(--gj-text-dim);
+  text-align: center;
+}
+
+.ttt-rank__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ttt-rank__score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ttt-rank__wl {
+  color: var(--gj-text-dim);
+  font-size: 0.85em;
+}
+
+/* ---- 온라인 대국 --------------------------------------------------------- */
+
+.ttt-vs {
+  margin-left: 8px;
+  font-weight: 400;
+  font-size: 0.72em;
+  color: var(--gj-text-dim);
+}
+
+.ttt-delta {
+  margin-top: 6px;
+  font-weight: 700;
+  color: var(--gj-accent);
+}
+
+.ttt-toast {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 10px;
+  z-index: 5;
+  max-width: min(90%, 26rem);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(8, 11, 18, 0.92);
+  border: 1px solid var(--gj-border);
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
 }

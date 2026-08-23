@@ -29,4 +29,7 @@ game:
     secret: ${JWT_SECRET:gujuck-game-local-dev-secret-key-please-override-in-production}
     expiration-seconds: 604800
   cors:
-    allowed-origins: ${CORS_ORIGINS:http://localhost:5170,http://localhost:5172,https://game.oijwef098234.com}
+    # 프론트 개발 서버 포트를 전부 적는다. 하나라도 빠지면 그 게임만 브라우저가
+    # 요청을 막는데, 콘솔을 열기 전에는 서버가 죽은 것처럼 보인다.
+    # home 5170, tic-tac-toe 5171, alkkagi 5172, archery 5173
+    allowed-origins: ${CORS_ORIGINS:http://localhost:5170,http://localhost:5171,http://localhost:5172,http://localhost:5173,https://game.oijwef098234.com}

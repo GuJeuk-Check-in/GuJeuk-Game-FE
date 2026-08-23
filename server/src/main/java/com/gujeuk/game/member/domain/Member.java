@@ -13,6 +13,12 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
+/**
+ * 계정.
+ *
+ * 여기에는 "누구인가"만 둔다. 레이팅·승패는 게임마다 다르므로
+ * {@link MemberGameStat}이 게임별로 따로 갖는다.
+ */
 @Entity
 @Table(name = "member")
 @Getter
@@ -29,15 +35,6 @@ public class Member {
     @Column(nullable = false, length = 100)
     private String password;
 
-    @Column(nullable = false)
-    private int rating;
-
-    @Column(nullable = false)
-    private int wins;
-
-    @Column(nullable = false)
-    private int losses;
-
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -45,26 +42,6 @@ public class Member {
     private Member(String nickname, String password) {
         this.nickname = nickname;
         this.password = password;
-        this.rating = INITIAL_RATING;
-        this.wins = 0;
-        this.losses = 0;
         this.createdAt = LocalDateTime.now();
-    }
-
-    public static final int INITIAL_RATING = 1200;
-
-    public int totalGames() {
-        return wins + losses;
-    }
-
-    public void applyWin(int delta) {
-        this.rating += delta;
-        this.wins += 1;
-    }
-
-    public void applyLoss(int delta) {
-        // 레이팅이 음수로 내려가면 랭킹이 이상해진다. 바닥을 둔다.
-        this.rating = Math.max(100, this.rating - delta);
-        this.losses += 1;
     }
 }
