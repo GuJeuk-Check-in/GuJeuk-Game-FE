@@ -36,3 +36,27 @@
   font-size: 14px;
   font-weight: 600;
 }
+
+.ar-shots {
+  display: flex;
+  gap: 6px;
+}
+
+.ar-shot {
+  min-width: 26px;
+  padding: 3px 0;
+  text-align: center;
+  border-radius: 8px;
+  background: var(--gj-surface);
+  border: 1px solid var(--gj-border);
+  color: var(--gj-text-dim);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ar-shot.is-done {
+  background: var(--gj-accent);
+  border-color: var(--gj-accent);
+  color: var(--gj-accent-ink);
+}
