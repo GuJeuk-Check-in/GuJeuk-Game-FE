@@ -92,6 +92,10 @@ const MAX_ARROW_SPEED = 19
 const WIND_FORCE = 0.00016
 /** 과녁에 꽂힌 화살은 이만큼만 남긴다. 계속 쌓이면 과녁이 안 보인다. */
 const MAX_STUCK_ARROWS = 12
+/** 물리 갱신 간격. 미리 돌려보는 쪽과 화면이 같은 값을 써야 결과가 같다. */
+const STEP_SEC = 1 / 60
+/** 미리 돌려볼 때의 안전 상한. 여기 닿으면 잃은 화살로 본다. */
+const MAX_FLIGHT_STEPS = 3000
 
 export type Shooter = 'me' | 'them'
 
@@ -155,6 +159,13 @@ export class ArcheryGame {
   private arrow: Body | null = null
   private arrowInput: ShotInput | null = null
   private arrowBy: Shooter = 'me'
+  /** 발사할 때 확정해 두는 결과. 화면은 이걸 보여주기만 한다. */
+  private arrowResult: ShotResult | null = null
+  private arrowImpactAngle = 0
+  private arrowSteps = 0
+  private flownSteps = 0
+  /** 화면이 멈춰도 착탄시키는 안전망. */
+  private landTimer: ReturnType<typeof setTimeout> | null = null
   private trail: PointerPoint[] = []
   private stuck: StuckArrow[] = []
 
@@ -183,13 +194,16 @@ export class ArcheryGame {
     })
 
     this.loop = new GameLoop({
-      update: (dt) => this.update(dt),
+      update: () => this.update(),
       render: () => this.render(),
+      // 미리 돌려보는 쪽과 같은 스텝이어야 같은 결과가 나온다.
+      fixedStepSec: STEP_SEC,
     })
     this.loop.start()
   }
 
   destroy(): void {
+    this.clearArrow()
     this.loop.destroy()
     this.input.destroy()
     Composite.clear(this.engine.world, false)
@@ -227,83 +241,58 @@ export class ArcheryGame {
   private launch(input: ShotInput, by: Shooter): void {
     this.clearArrow()
 
-    const arrow = Bodies.rectangle(ARCHER_X, ARCHER_Y, 34, 4, {
-      frictionAir: 0.004,
-      density: 0.002,
-    })
-    Composite.add(this.engine.world, arrow)
+    // 결과를 발사 시점에 확정한다.
+    //
+    // 렌더 루프는 탭이 숨으면 멈춘다 — 브라우저가 rAF를 주지 않는다. 착탄
+    // 보고가 렌더에 묶여 있으면 쏘자마자 탭을 벗어난 사람은 자기 점수를
+    // 보내지 못하고, 차례가 시간 초과로 0점 처리된다. 결과를 먼저 정해 두면
+    // 화면은 그걸 언제 보여줄지만 정하면 된다.
+    const flight = simulate(input)
 
-    const speed = input.power * MAX_ARROW_SPEED
-    Body.setVelocity(arrow, {
-      x: Math.cos(input.angle) * speed,
-      y: -Math.sin(input.angle) * speed,
-    })
-
-    this.arrow = arrow
+    this.arrow = spawnArrow(this.engine, input)
     this.arrowInput = input
     this.arrowBy = by
+    this.arrowResult = flight.result
+    this.arrowImpactAngle = flight.angle
+    this.arrowSteps = flight.steps
+    this.flownSteps = 0
     this.trail = []
+
+    // 화면이 멈춰도 착탄은 일어나야 한다. setTimeout은 숨은 탭에서도 느리게나마
+    // 깨어나므로 안전망이 된다. 정상이면 루프가 먼저 끝내고 이 타이머는 지워진다.
+    this.landTimer = setTimeout(() => this.finishShot(), flight.steps * STEP_SEC * 1000 + 700)
+
     this.emit()
   }
 
-  private update(dtSec: number): void {
+  private update(): void {
     const arrow = this.arrow
     const input = this.arrowInput
     if (!arrow || !input) return
 
-    // 과녁 평면을 지나는 순간의 높이를 구하려면 스텝 이전 위치가 필요하다.
-    // position은 Engine.update가 제자리에서 고치므로 숫자를 복사해 둔다.
-    const prevX = arrow.position.x
-    const prevY = arrow.position.y
-
-    // 바람은 매 스텝 더해지는 수평 상수력이다. 한 번만 주면 초속만 바뀌고
-    // 비행 중 휘어지는 느낌이 안 난다.
-    Body.applyForce(arrow, arrow.position, {
-      x: input.wind * WIND_FORCE * arrow.mass,
-      y: 0,
-    })
-
-    Engine.update(this.engine, dtSec * 1000)
+    stepArrow(this.engine, arrow, input.wind)
 
     this.trail.push({ x: arrow.position.x, y: arrow.position.y })
     if (this.trail.length > 70) this.trail.shift()
 
-    // 화살은 진행 방향을 향하게 돌려준다. 물리적으로는 필요 없지만 이게
-    // 없으면 옆으로 누운 채 날아가 어색하다.
-    Body.setAngle(arrow, Math.atan2(arrow.velocity.y, arrow.velocity.x))
-
-    const { x, y } = arrow.position
-    const plane = TARGET_X - TARGET_HALF_W
-    if (x >= plane) {
-      // 스텝이 끝난 위치는 평면을 최대 24px 지나쳐 있다. 그 좌표로 점수를 매기면
-      // 실제 통과 높이와 최대 16px 어긋나는데, 링 간격이 10px이라 점수가 실제로
-      // 바뀐다. 직전 위치와 이어 평면을 지나는 지점을 구한다.
-      const hitY = crossingY(prevX, prevY, x, y, plane)
-
-      // 평면을 지났다고 다 맞은 게 아니다. 이 조건은 x만 보므로 과녁 한참 위로
-      // 넘어간 화살도 여기로 온다. 링 안팎을 갈라두지 않으면 0점짜리 화살이
-      // 과녁 위 허공에 꽂힌 채 남는다.
-      this.land(hitY, Math.abs(hitY - TARGET_Y) <= RING_OUTER ? 'target' : 'over')
-    } else if (y >= GROUND_Y) {
-      this.land(null, 'ground')
-    } else if (x > WORLD_W + 100 || y > WORLD_H + 200) {
-      this.land(null, 'out')
-    }
+    this.flownSteps += 1
+    // 어디에 맞았는지는 이미 정해져 있다. 여기서는 도착 시점만 본다.
+    if (this.flownSteps >= this.arrowSteps) this.finishShot()
   }
 
-  private land(hitY: number | null, outcome: ShotResult['outcome']): void {
+  /** 확정된 결과를 적용하고 알린다. 루프가 부르든 안전망이 부르든 같다. */
+  private finishShot(): void {
     const input = this.arrowInput
-    const arrow = this.arrow
-    if (!input || !arrow) return
+    const result = this.arrowResult
+    if (!input || !result) return
 
-    // 링 안에 든 발만 점수가 있다. over/ground/out은 전부 0점이다.
-    const score = outcome === 'target' && hitY !== null ? scoreFor(Math.abs(hitY - TARGET_Y)) : 0
-
-    if (outcome === 'target' && hitY !== null) {
+    if (result.outcome === 'target' && result.hitY !== null) {
       this.stuck.push({
         x: TARGET_X - TARGET_HALF_W,
-        y: hitY,
-        angle: arrow.angle,
+        y: result.hitY,
+        // 화면이 멈춘 채 안전망이 부르면 살아 있는 화살은 아직 출발 자세다.
+        // 꽂히는 각도도 미리 구해 둔 값을 쓴다.
+        angle: this.arrowImpactAngle,
         by: this.arrowBy,
       })
       // 오래된 것부터 걷어낸다. 계속 쌓이면 과녁이 화살에 덮인다.
@@ -313,13 +302,20 @@ export class ArcheryGame {
     const by = this.arrowBy
     this.clearArrow()
     this.emit()
-    this.onShotLanded(input, { score, hitY, outcome }, by)
+    this.onShotLanded(input, result, by)
   }
 
   private clearArrow(): void {
+    if (this.landTimer !== null) {
+      clearTimeout(this.landTimer)
+      this.landTimer = null
+    }
     if (this.arrow) Composite.remove(this.engine.world, this.arrow)
     this.arrow = null
     this.arrowInput = null
+    this.arrowResult = null
+    this.arrowSteps = 0
+    this.flownSteps = 0
     this.trail = []
   }
 
@@ -630,6 +626,83 @@ export class ArcheryGame {
     ctx.fillStyle = ratio > 0.85 ? '#e8604c' : '#4d8dff'
     ctx.fillRect(barX, barY, 80 * ratio, 8)
   }
+}
+
+/** 화살 하나를 세계에 넣는다. 화면용과 미리 돌려보는 쪽이 같아야 한다. */
+function spawnArrow(engine: Engine, input: ShotInput): Body {
+  const arrow = Bodies.rectangle(ARCHER_X, ARCHER_Y, 34, 4, {
+    frictionAir: 0.004,
+    density: 0.002,
+  })
+  Composite.add(engine.world, arrow)
+
+  const speed = input.power * MAX_ARROW_SPEED
+  Body.setVelocity(arrow, {
+    x: Math.cos(input.angle) * speed,
+    y: -Math.sin(input.angle) * speed,
+  })
+  return arrow
+}
+
+/**
+ * 화살을 한 스텝 민다. 착탄했으면 결과를, 아직 날고 있으면 null을 준다.
+ *
+ * 화면과 미리 돌려보는 쪽이 이 함수 하나를 같이 쓴다. 두 벌로 두면 언젠가
+ * 한쪽만 고쳐져서 점수와 그림이 어긋난다.
+ */
+function stepArrow(engine: Engine, arrow: Body, wind: number): ShotResult | null {
+  // 과녁 평면을 지나는 순간의 높이를 구하려면 스텝 이전 위치가 필요하다.
+  // position은 Engine.update가 제자리에서 고치므로 숫자를 복사해 둔다.
+  const prevX = arrow.position.x
+  const prevY = arrow.position.y
+
+  // 바람은 매 스텝 더해지는 수평 상수력이다. 한 번만 주면 초속만 바뀌고
+  // 비행 중 휘어지는 느낌이 안 난다.
+  Body.applyForce(arrow, arrow.position, { x: wind * WIND_FORCE * arrow.mass, y: 0 })
+  Engine.update(engine, STEP_SEC * 1000)
+
+  // 화살은 진행 방향을 향하게 돌려준다. 물리적으로는 필요 없지만 이게 없으면
+  // 옆으로 누운 채 날아가 어색하다.
+  Body.setAngle(arrow, Math.atan2(arrow.velocity.y, arrow.velocity.x))
+
+  const { x, y } = arrow.position
+  const plane = TARGET_X - TARGET_HALF_W
+
+  if (x >= plane) {
+    // 스텝이 끝난 위치는 평면을 최대 24px 지나쳐 있다. 그 좌표로 점수를 매기면
+    // 실제 통과 높이와 최대 16px 어긋나는데, 링 간격이 10px이라 점수가 실제로
+    // 바뀐다. 직전 위치와 이어 평면을 지나는 지점을 구한다.
+    const hitY = crossingY(prevX, prevY, x, y, plane)
+
+    // 평면을 지났다고 다 맞은 게 아니다. 이 조건은 x만 보므로 과녁 한참 위로
+    // 넘어간 화살도 여기로 온다. 링 안팎을 갈라두지 않으면 0점짜리 화살이
+    // 과녁 위 허공에 꽂힌 채 남는다.
+    const outcome = Math.abs(hitY - TARGET_Y) <= RING_OUTER ? 'target' : 'over'
+    const score = outcome === 'target' ? scoreFor(Math.abs(hitY - TARGET_Y)) : 0
+    return { score, hitY, outcome }
+  }
+  if (y >= GROUND_Y) return { score: 0, hitY: null, outcome: 'ground' }
+  if (x > WORLD_W + 100 || y > WORLD_H + 200) return { score: 0, hitY: null, outcome: 'out' }
+  return null
+}
+
+/** 화면과 무관하게 이 발이 어떻게 끝나는지 미리 끝까지 돌려본다. */
+function simulate(input: ShotInput): { result: ShotResult; steps: number; angle: number } {
+  const engine = Engine.create()
+  engine.gravity.y = 1
+  const arrow = spawnArrow(engine, input)
+
+  for (let steps = 1; steps <= MAX_FLIGHT_STEPS; steps += 1) {
+    const result = stepArrow(engine, arrow, input.wind)
+    if (result) {
+      const angle = arrow.angle
+      Engine.clear(engine)
+      return { result, steps, angle }
+    }
+  }
+
+  Engine.clear(engine)
+  return { result: { score: 0, hitY: null, outcome: 'out' }, steps: MAX_FLIGHT_STEPS, angle: 0 }
 }
 
 /**
