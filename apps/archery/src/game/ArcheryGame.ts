@@ -148,6 +148,25 @@ const IMPACT_VIEW_W = 280
 const IMPACT_VIEW_H = 210
 /** 착탄 뒤 과녁을 보여주고 있는 시간(스텝). 60스텝이 1초다. */
 const IMPACT_HOLD_STEPS = 54
+/**
+ * 조준경 안에서의 링 간격(화면 px).
+ *
+ * 창 크기로 배율을 정하면 큰 화면에서는 본 화면보다 오히려 작게 보인다.
+ * 배율이 아니라 "링이 몇 px로 보일지"를 고정한다. 그러면 창이 클수록 과녁을
+ * 더 넓게 담고, 작아도 링 간격은 유지된다.
+ */
+const SCOPE_RING_PX = 11
+/**
+ * 본 화면 링 간격이 이보다 좁을 때만 조준경을 띄운다.
+ *
+ * 넓은 화면에서는 본 화면만으로 어느 링인지 읽힌다. 그때도 창을 띄우면
+ * 가리기만 하고 얻는 게 없다.
+ */
+const SCOPE_TRIGGER_RING_PX = 9
+/** 조준경 반지름(화면 px). 화면 짧은 쪽에 비례한다. */
+const SCOPE_MIN_R = 56
+const SCOPE_MAX_R = 120
+
 /** 카메라가 목표로 다가가는 비율. 스텝마다 남은 거리의 이만큼을 좁힌다. */
 const CAMERA_EASE = 0.14
 /** 세계 위쪽으로 이만큼까지는 따라 올라가도 된다. 높은 탄도를 담기 위함이다. */
@@ -210,6 +229,12 @@ export function aimCamera(view: ViewSize): Camera {
 /** 비행 중. 화살을 따라간다. */
 export function flightCamera(view: ViewSize, x: number, y: number): Camera {
   return clampCamera(view, { x, y, zoom: zoomToFit(view, FLIGHT_VIEW_W, FLIGHT_VIEW_H) })
+}
+
+/** 조준경 안. 링 간격을 고정해 두고 과녁을 담는다. */
+export function scopeCamera(scopeView: ViewSize): Camera {
+  const base = Math.min(scopeView.width / WORLD_W, scopeView.height / WORLD_H)
+  return { x: TARGET_X, y: TARGET_Y, zoom: SCOPE_RING_PX / RING_STEP / base }
 }
 
 /** 착탄 직후. 과녁으로 붙어 어디에 꽂혔는지 보여준다. */
@@ -579,7 +604,8 @@ export class ArcheryGame {
 
   private render(): void {
     this.stage.fill('#0f1420')
-    this.renderScene(this.stage.ctx, this.camera)
+    this.renderScene(this.stage.ctx, this.camera, this.stage)
+    this.drawScope(this.stage.ctx)
     // 게이지는 세계 변환 밖에서, 손가락 자리에 그린다.
     this.drawAimHud(this.stage.ctx)
   }
@@ -590,8 +616,8 @@ export class ArcheryGame {
    * 카메라만 바꿔 여러 번 부를 수 있게 떼어 놓는다. 조준 중 과녁을 확대해
    * 보여주는 창이 이 함수를 같은 프레임에 한 번 더 부르는 것으로 끝난다.
    */
-  private renderScene(ctx: CanvasRenderingContext2D, camera: Camera): void {
-    const { scale, offsetX, offsetY } = cameraTransform(this.stage, camera)
+  private renderScene(ctx: CanvasRenderingContext2D, camera: Camera, view: ViewSize): void {
+    const { scale, offsetX, offsetY } = cameraTransform(view, camera)
 
     ctx.save()
     ctx.translate(offsetX, offsetY)
@@ -785,6 +811,61 @@ export class ArcheryGame {
     ctx.lineTo(ARCHER_X + Math.cos(aim.angle) * length, ARCHER_Y - Math.sin(aim.angle) * length)
     ctx.stroke()
     ctx.setLineDash([])
+  }
+
+  /**
+   * 과녁 확대 조준경.
+   *
+   * 사거리 전체를 담으면 과녁이 작아지고, 과녁을 크게 잡으면 어디를 겨누는지
+   * 알 수 없다. 상용 양궁 게임은 둘을 겹쳐서 푼다 — 넓은 시야 위에 확대창을
+   * 얹는다. 여기서는 같은 renderScene을 카메라와 뷰포트만 바꿔 한 번 더 부르는
+   * 것으로 끝난다. 그래서 과녁에 꽂힌 화살도 확대창에 그대로 보인다.
+   */
+  private drawScope(ctx: CanvasRenderingContext2D): void {
+    // 내 차례에 조준할 수 있을 때만. 날아가는 동안에는 카메라가 따라간다.
+    if (!this.armed) return
+
+    // 본 화면만으로 링이 읽히면 띄우지 않는다.
+    const mainScale = cameraTransform(this.stage, this.camera).scale
+    if (mainScale * RING_STEP >= SCOPE_TRIGGER_RING_PX) return
+
+    const { width, height } = this.stage
+    const radius = clamp(Math.min(width, height) * 0.22, SCOPE_MIN_R, SCOPE_MAX_R)
+    const cx = width - radius - 14
+    const cy = radius + 14
+
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+    ctx.clip()
+
+    // 창을 하나의 작은 화면으로 본다. 원점을 창 왼쪽 위로 옮기고 창 크기를
+    // 뷰포트로 넘기면 cameraTransform이 알아서 창 한가운데에 과녁을 놓는다.
+    ctx.translate(cx - radius, cy - radius)
+    const view: ViewSize = { width: radius * 2, height: radius * 2 }
+    this.renderScene(ctx, scopeCamera(view), view)
+    ctx.restore()
+
+    // 테두리와 십자선
+    ctx.save()
+    ctx.strokeStyle = 'rgba(245, 207, 61, 0.85)'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+    ctx.stroke()
+
+    const tick = radius * 0.18
+    ctx.beginPath()
+    ctx.moveTo(cx, cy - radius)
+    ctx.lineTo(cx, cy - radius + tick)
+    ctx.moveTo(cx, cy + radius)
+    ctx.lineTo(cx, cy + radius - tick)
+    ctx.moveTo(cx - radius, cy)
+    ctx.lineTo(cx - radius + tick, cy)
+    ctx.moveTo(cx + radius, cy)
+    ctx.lineTo(cx + radius - tick, cy)
+    ctx.stroke()
+    ctx.restore()
   }
 
   /**
