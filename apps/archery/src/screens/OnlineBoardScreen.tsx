@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { GameCanvas, GameShell, Icon, ResultOverlay } from '@gujuck/ui'
 import type { CanvasStage } from '@gujuck/game-core'
 import { ArcheryGame } from '../game/ArcheryGame'
+import { OfflineBar } from '../components/OfflineBar'
 import type { Match } from '../useMatch'
 
 /** 종료 사유를 사람 말로. 모르는 값이 와도 화면이 비지 않게 기본값을 둔다. */
@@ -17,7 +18,7 @@ interface Props {
 }
 
 export function OnlineBoardScreen({ match, onExit }: Props) {
-  const { board, result, notice, opponent, profile } = match
+  const { board, result, notice, opponent, profile, connected } = match
 
   const handleMount = useCallback(
     (stage: CanvasStage) => {
@@ -49,7 +50,11 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
               {profile?.nickname ?? '나'} vs {opponent?.nickname ?? '상대'}
             </span>
           </div>
-          <button className="gj-btn ar-btn--sm" onClick={match.resign} disabled={Boolean(result)}>
+          <button
+            className="gj-btn ar-btn--sm"
+            onClick={match.resign}
+            disabled={Boolean(result) || !connected}
+          >
             <Icon name="flag" size={15} />
             기권
           </button>
@@ -87,7 +92,11 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
         </div>
       }
     >
-      {notice && <div className="ar-toast">{notice}</div>}
+      {connected ? (
+        notice && <div className="ar-toast">{notice}</div>
+      ) : (
+        <OfflineBar onRetry={match.retry} onExit={onExit} float />
+      )}
 
       <GameCanvas onMount={handleMount} />
 

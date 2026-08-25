@@ -65,6 +65,8 @@ export function useMatch() {
   const [board, setBoard] = useState<Scoreboard>(EMPTY_BOARD)
   const [result, setResult] = useState<MatchResult | null>(null)
   const [notice, setNotice] = useState('')
+  /** 소켓이 살아 있는지. 끊기면 화면에 돌아올 길을 띄운다. */
+  const [connected, setConnected] = useState(false)
 
   const socketRef = useRef<{ socket: ArcherySocket; alive: { value: boolean } } | null>(null)
   const gameRef = useRef<ArcheryGame | null>(null)
@@ -105,6 +107,11 @@ export function useMatch() {
             nickname: message.nickname as string,
             rating: message.rating as number,
           })
+          setConnected(true)
+          setNotice('')
+          // 처음 붙는 것이면 로비로 보낸다. 대결 중 다시 붙는 것이면 화면을
+          // 건드리지 않는다 — 곧 RESUMED가 와서 판을 되살린다.
+          setPhase((current) => (current === 'auth' ? 'lobby' : current))
           break
 
         case 'ROOM_CREATED':
@@ -131,8 +138,15 @@ export function useMatch() {
           setBoard(next)
           setNotice('')
 
+          const game = gameRef.current
+
           if (message.mine === true) {
             // 내 화살은 이미 내 화면에서 날아갔다. 차례만 갱신한다.
+            applyTurn(next.yourTurn, next.wind)
+          } else if (message.timedOut === true || !game) {
+            // 시간을 넘겨 적힌 발은 날아간 화살이 없다. 캔버스가 아직 안 붙은
+            // 경우도 마찬가지로 재생할 수 없는데, 그냥 흘리면 turnAfterReplay가
+            // 영영 남아 내 차례가 다시 열리지 않는다. 바로 연다.
             applyTurn(next.yourTurn, next.wind)
           } else {
             // 상대 화살을 같은 입력으로 재생한다. 내 차례는 재생이 끝난 뒤에 연다.
@@ -141,7 +155,7 @@ export function useMatch() {
             // 무관하다 — 라운드를 닫는 발에서는 서버가 그 직전에 새로 뽑기 때문에,
             // 둘을 헷갈리면 상대 화면에서만 궤적이 어긋난다.
             turnAfterReplay.current = { canShoot: next.yourTurn, wind: next.wind }
-            gameRef.current?.replay({
+            game.replay({
               angle: message.angle as number,
               power: message.power as number,
               wind: message.shotWind as number,
@@ -197,12 +211,13 @@ export function useMatch() {
         token,
         onMessage: handleMessage,
         onClose: () => {
-          if (alive.value) setNotice('서버와 연결이 끊겼습니다.')
+          if (!alive.value) return
+          setConnected(false)
+          setNotice('서버와 연결이 끊겼습니다.')
         },
       })
 
       socketRef.current = { socket, alive }
-      setPhase('lobby')
     },
     [handleMessage, closeSocket],
   )
@@ -248,6 +263,7 @@ export function useMatch() {
   const logout = useCallback(() => {
     tokenStore.clear()
     closeSocket()
+    setConnected(false)
     setProfile(null)
     setOpponent(null)
     setResult(null)
@@ -255,11 +271,25 @@ export function useMatch() {
     setPhase('auth')
   }, [closeSocket])
 
+  /** 끊긴 뒤 다시 붙는다. 방이 살아 있으면 서버가 RESUMED로 판을 되살린다. */
+  const retry = useCallback(() => {
+    const saved = tokenStore.get()
+    if (!saved) {
+      setPhase('auth')
+      return
+    }
+    setNotice('다시 연결하는 중…')
+    connect(saved)
+  }, [connect])
+
   const createRoom = useCallback(() => socketRef.current?.socket.createRoom(), [])
   const joinRoom = useCallback((code: string) => socketRef.current?.socket.joinRoom(code), [])
   const resign = useCallback(() => socketRef.current?.socket.resign(), [])
 
   const backToLobby = useCallback(() => {
+    // 서버에 알리지 않으면 방이 남아, 새로고침했을 때 재접속이 그 방을 찾아
+    // 붙여 취소한 방으로 되돌아간다.
+    socketRef.current?.socket.leaveRoom()
     setPhase('lobby')
     setRoomCode('')
     setOpponent(null)
@@ -280,6 +310,7 @@ export function useMatch() {
 
   return {
     phase,
+    connected,
     profile,
     opponent,
     roomCode,
@@ -293,6 +324,7 @@ export function useMatch() {
     createRoom,
     joinRoom,
     resign,
+    retry,
     backToLobby,
   }
 }

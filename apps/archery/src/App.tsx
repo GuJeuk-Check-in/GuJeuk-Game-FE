@@ -4,6 +4,7 @@ import { AuthScreen } from './screens/AuthScreen'
 import { LobbyScreen } from './screens/LobbyScreen'
 import { LocalBoardScreen } from './screens/LocalBoardScreen'
 import { OnlineBoardScreen } from './screens/OnlineBoardScreen'
+import { OfflineBar } from './components/OfflineBar'
 import { useMatch } from './useMatch'
 import './App.css'
 
@@ -31,6 +32,8 @@ export default function App() {
       <LobbyScreen
         profile={match.profile}
         notice={match.notice}
+        connected={match.connected}
+        onRetry={match.retry}
         onCreateRoom={match.createRoom}
         onJoinRoom={match.joinRoom}
         onPlayLocal={() => setLocal(true)}
@@ -42,11 +45,14 @@ export default function App() {
   if (match.phase === 'waiting') {
     return (
       <GameShell>
+        {!match.connected && <OfflineBar onRetry={match.retry} onExit={match.backToLobby} float />}
         <div className="ar-center">
           <div className="ar-card">
             <h2 className="ar-card__title">방 코드</h2>
             <div className="ar-code">{match.roomCode}</div>
             <p className="ar-card__lead">상대에게 이 코드를 알려주세요.</p>
+            {/* 전에는 이 화면이 notice를 그리지 않아 서버 안내와 에러가 전부 사라졌다. */}
+            {match.notice && <p className="ar-notice">{match.notice}</p>}
             <button className="gj-btn" onClick={match.backToLobby}>
               취소
             </button>

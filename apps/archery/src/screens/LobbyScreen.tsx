@@ -2,11 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import type { RankingEntry } from '@gujuck/api'
 import { GameShell, Icon } from '@gujuck/ui'
 import { authApi } from '../api'
+import { OfflineBar } from '../components/OfflineBar'
 import type { OnlineProfile } from '../useMatch'
 
 interface Props {
   profile: OnlineProfile | null
   notice: string
+  connected: boolean
+  onRetry: () => void
   onCreateRoom: () => void
   onJoinRoom: (code: string) => void
   onPlayLocal: () => void
@@ -16,6 +19,8 @@ interface Props {
 export function LobbyScreen({
   profile,
   notice,
+  connected,
+  onRetry,
   onCreateRoom,
   onJoinRoom,
   onPlayLocal,
@@ -50,9 +55,10 @@ export function LobbyScreen({
       }
     >
       <div className="ar-lobby">
+        {!connected && <OfflineBar onRetry={onRetry} />}
         {notice && <p className="ar-notice">{notice}</p>}
 
-        <button className="gj-btn gj-btn--primary" onClick={onCreateRoom}>
+        <button className="gj-btn gj-btn--primary" onClick={onCreateRoom} disabled={!connected}>
           <Icon name="plus" size={17} />방 만들기
         </button>
 

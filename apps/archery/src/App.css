@@ -351,3 +351,34 @@
   text-align: center;
   pointer-events: none;
 }
+
+/* ---- 연결 끊김 ------------------------------------------------------------ */
+
+.ar-offline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 14px;
+  background: var(--gj-surface);
+  border: 1px solid var(--gj-danger);
+}
+
+/* 캔버스 위에 띄울 때. 셸의 body가 relative라 그 기준으로 잡힌다. */
+.ar-offline--float {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 10px;
+  z-index: 6;
+  max-width: min(94%, 30rem);
+  background: rgba(8, 11, 18, 0.94);
+}
+
+.ar-offline__text {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gj-danger);
+}

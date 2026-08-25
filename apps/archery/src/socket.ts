@@ -35,6 +35,8 @@ export interface ArcherySocket {
    * 쪽이 계산한 값이다. 서버는 범위만 확인한다.
    */
   shoot(angle: number, power: number, score: number): void
+  /** 방을 떠난다. 이걸 안 보내면 서버에 방이 그대로 남는다. */
+  leaveRoom(): void
   resign(): void
   close(): void
   readonly isOpen: boolean
@@ -69,6 +71,7 @@ export function createArcherySocket(options: ArcherySocketOptions): ArcherySocke
     createRoom: () => send({ type: 'CREATE_ROOM' }),
     joinRoom: (code) => send({ type: 'JOIN_ROOM', code }),
     shoot: (angle, power, score) => send({ type: 'SHOT', angle, power, score }),
+    leaveRoom: () => send({ type: 'LEAVE_ROOM' }),
     resign: () => send({ type: 'RESIGN' }),
     close: () => socket.close(),
     get isOpen() {
