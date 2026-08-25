@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { ApiError } from '@gujuck/api'
-import { GameShell } from '@gujuck/ui'
+import { GameShell, Icon } from '@gujuck/ui'
 import { authApi } from '../api'
 
 interface Props {
@@ -83,7 +83,8 @@ export function AuthScreen({ onAuthenticated, onPlayLocal }: Props) {
           </button>
 
           {/* 상대가 없어도 규칙을 익힐 수 있어야 한다. 로그인은 대전에만 필요하다. */}
-          <button className="gj-btn ttt-ghost" type="button" onClick={onPlayLocal}>
+          <button className="gj-btn gj-btn--ghost" type="button" onClick={onPlayLocal}>
+            <Icon name="bot" size={16} />
             로그인 없이 AI와 연습
           </button>
         </form>

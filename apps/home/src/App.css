@@ -30,6 +30,8 @@
 }
 
 .hm-card {
+  /* 카드 전체가 누르는 대상이다. 손가락 최소 크기를 넘긴다. */
+  min-height: var(--gj-tap);
   display: flex;
   align-items: center;
   gap: 14px;
@@ -55,9 +57,16 @@
   background: var(--gj-surface);
 }
 
-.hm-card__emoji {
-  font-size: 28px;
-  line-height: 1;
+.hm-card__icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: var(--gj-radius);
+  /* 게임마다 다른 색을 옅게 깔아 목록에서 서로 구분되게 한다. */
+  background: color-mix(in srgb, var(--card-accent, var(--gj-accent)) 16%, transparent);
+  color: var(--card-accent, var(--gj-accent));
 }
 
 .hm-card__text {
@@ -79,6 +88,8 @@
 }
 
 .hm-card__arrow {
+  display: grid;
+  place-items: center;
   color: var(--gj-text-dim);
-  font-size: 22px;
+  flex-shrink: 0;
 }

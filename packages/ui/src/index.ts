@@ -12,3 +12,6 @@ export type { GameCanvasProps } from './GameCanvas'
 
 export { ResultOverlay } from './ResultOverlay'
 export type { ResultOverlayProps } from './ResultOverlay'
+
+export { Icon } from './Icon'
+export type { IconName, IconProps } from './Icon'

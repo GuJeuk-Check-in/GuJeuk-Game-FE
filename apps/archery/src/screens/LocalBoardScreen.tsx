@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { GameCanvas, GameShell, ResultOverlay } from '@gujuck/ui'
+import { GameCanvas, GameShell, Icon, ResultOverlay } from '@gujuck/ui'
 import type { CanvasStage } from '@gujuck/game-core'
 import { ArcheryGame } from '../game/ArcheryGame'
 import { ARROWS_PER_ROUND, useLocalRound } from '../useLocalRound'
@@ -39,9 +39,18 @@ export function LocalBoardScreen({ onExit }: Props) {
         <div className="ar-header">
           <div className="ar-title">연습</div>
           <div className="ar-meta">
-            <span className="ar-chip">🏹 {ARROWS_PER_ROUND - round.shots.length}</span>
-            <span className="ar-chip">⭐ {round.total}</span>
-            <span className="ar-chip">{windLabel(round.wind)}</span>
+            <span className="ar-chip">
+              <Icon name="arrow" size={15} label="남은 화살" />
+              {ARROWS_PER_ROUND - round.shots.length}
+            </span>
+            <span className="ar-chip">
+              <Icon name="star" size={15} label="점수" />
+              {round.total}
+            </span>
+            <span className="ar-chip">
+              <Icon name="wind" size={15} label="바람" />
+              {windLabel(round.wind)}
+            </span>
             <button className="gj-btn ar-btn--sm" onClick={onExit}>
               나가기
             </button>
@@ -69,6 +78,7 @@ export function LocalBoardScreen({ onExit }: Props) {
       <ResultOverlay
         open={round.finished}
         title={`${round.total}점`}
+        icon="target"
         description={`${ARROWS_PER_ROUND}발 만점은 ${ARROWS_PER_ROUND * 10}점이에요.`}
         primaryLabel="다시 쏘기"
         onPrimary={round.reset}

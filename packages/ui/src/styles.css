@@ -1,16 +1,60 @@
-/* 모든 앱이 import 하는 공통 토큰과 셸 스타일. */
+/*
+ * 모든 앱이 import 하는 공통 토큰과 셸 스타일.
+ *
+ * ─── 색을 정한 방식 ──────────────────────────────────────────────────────
+ * 값은 눈대중이 아니라 대비를 계산해서 정했다. 다크 테마는 "어두우니 잘 보이겠지"
+ * 라고 넘기기 쉬운데, 실제로 재보면 미달인 조합이 흔하다. 실제로 이전 주 버튼은
+ * 흰 글자 on #4d8dff 로 대비가 3.20이었다(기준 4.5).
+ *
+ * 본문 글자는 4.5:1, 조작 요소의 경계선은 3:1을 넘긴다.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
 
 :root {
+  /* ---- 표면 ---- */
   --gj-bg: #0f1420;
   --gj-surface: #1a2130;
   --gj-surface-2: #232c3d;
-  --gj-text: #eef2f9;
-  --gj-text-dim: #9aa6bd;
-  --gj-accent: #4d8dff;
-  --gj-accent-ink: #ffffff;
+  /* 카드 테두리처럼 장식에 가까운 경계. 낮아도 된다. */
   --gj-border: #2c3648;
+  /*
+   * 입력창·버튼처럼 눌러야 하는 요소의 경계.
+   * 배경(#121826) 대비 3.25로, 조작 요소에 요구되는 3:1을 넘긴다.
+   */
+  --gj-border-strong: #566a8f;
+  --gj-field: #121826;
+
+  /* ---- 글자 ---- */
+  --gj-text: #eef2f9; /* 배경 대비 16.4 */
+  --gj-text-dim: #9aa6bd; /* 배경 대비 7.5 */
+
+  /* ---- 강조 ----
+   * 게임마다 자기 색으로 덮어쓴다. 어떤 색을 넣든 밝은 계열이어야 하며,
+   * 그 위에 얹는 글자는 --gj-accent-ink(어두운 색)를 쓴다.
+   */
+  --gj-accent: #4d8dff;
+  --gj-accent-ink: #0f172a; /* 강조색 위 글자. #4d8dff 기준 5.58 */
+
+  /* ---- 상태 ---- */
+  --gj-danger: #ff7b7b; /* 배경 대비 7.34 */
+  --gj-danger-ink: #0f172a;
+  --gj-success: #4ade80;
+
+  /* ---- 형태 ---- */
   --gj-radius: 14px;
+  --gj-radius-lg: 20px;
+  --gj-radius-pill: 999px;
   --gj-gap: 12px;
+
+  /* ---- 동작 ----
+   * 하나의 길이를 모든 전환에 쓰면 작은 변화는 굼떠 보이고 큰 변화는 튄다.
+   */
+  --gj-dur-fast: 120ms;
+  --gj-dur: 200ms;
+  --gj-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* 손가락으로 누를 수 있는 최소 크기. */
+  --gj-tap: 44px;
 }
 
 * {
@@ -38,6 +82,20 @@ body {
   overscroll-behavior: none;
 }
 
+/*
+ * 키보드로 옮겨 다닐 때만 링을 보여준다.
+ *
+ * outline을 아예 없애면 키보드 사용자가 지금 어디에 있는지 알 수 없다.
+ * :focus-visible이라 마우스 클릭에는 뜨지 않는다.
+ */
+:where(button, a, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--gj-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---- 셸 ------------------------------------------------------------------ */
+
 .gj-shell {
   display: flex;
   flex-direction: column;
@@ -62,30 +120,69 @@ body {
   position: relative;
 }
 
+/* ---- 버튼 ---------------------------------------------------------------- */
+
 .gj-btn {
   appearance: none;
-  border: 1px solid var(--gj-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  /* 손가락으로 누를 수 있는 최소 크기를 보장한다. */
+  min-height: var(--gj-tap);
+  border: 1px solid var(--gj-border-strong);
   background: var(--gj-surface-2);
   color: var(--gj-text);
   border-radius: var(--gj-radius);
-  padding: 12px 18px;
+  padding: 10px 18px;
   font-size: 15px;
   font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
   /* 탭 후 300ms 지연과 더블탭 확대를 막는다. */
   touch-action: manipulation;
+  transition:
+    background var(--gj-dur-fast) var(--gj-ease),
+    transform var(--gj-dur-fast) var(--gj-ease);
+}
+
+.gj-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--gj-surface-2) 80%, var(--gj-text) 20%);
+}
+
+/* 눌린 순간 살짝 들어가면 "닿았다"는 감각이 생긴다. 터치에서 특히 중요하다. */
+.gj-btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .gj-btn--primary {
   background: var(--gj-accent);
   border-color: var(--gj-accent);
+  /* 밝은 강조색 위에는 어두운 글자를 얹어야 대비가 선다. */
   color: var(--gj-accent-ink);
 }
 
-.gj-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
+.gj-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--gj-accent) 88%, white 12%);
 }
+
+.gj-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--gj-text-dim);
+}
+
+.gj-btn--ghost:hover:not(:disabled) {
+  background: var(--gj-surface);
+  color: var(--gj-text);
+}
+
+.gj-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---- 결과 오버레이 -------------------------------------------------------- */
 
 .gj-overlay {
   position: absolute;
@@ -95,6 +192,7 @@ body {
   background: rgba(8, 11, 18, 0.72);
   padding: 20px;
   z-index: 10;
+  animation: gj-fade var(--gj-dur) var(--gj-ease);
 }
 
 .gj-overlay__sheet {
@@ -102,9 +200,27 @@ body {
   max-width: 340px;
   background: var(--gj-surface);
   border: 1px solid var(--gj-border);
-  border-radius: 20px;
+  border-radius: var(--gj-radius-lg);
   padding: 24px 20px;
   text-align: center;
+  animation: gj-rise var(--gj-dur) var(--gj-ease);
+}
+
+.gj-overlay__icon {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 12px;
+  border-radius: var(--gj-radius-pill);
+  /* 강조색을 옅게 깐 원 위에 아이콘. 배경을 꽉 채우면 화면이 시끄러워진다. */
+  background: color-mix(in srgb, var(--gj-accent) 16%, transparent);
+  color: var(--gj-accent);
+}
+
+.gj-overlay__icon.is-muted {
+  background: var(--gj-surface-2);
+  color: var(--gj-text-dim);
 }
 
 .gj-overlay__title {
@@ -124,4 +240,31 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+@keyframes gj-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes gj-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/*
+ * 움직임을 줄이도록 설정한 사용자에게는 전환을 걷어낸다.
+ * 없애는 게 아니라 즉시 최종 상태로 보낸다 — 그래야 상태 변화는 그대로 전달된다.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

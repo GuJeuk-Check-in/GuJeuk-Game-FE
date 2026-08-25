@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { GameCanvas, GameShell, ResultOverlay } from '@gujuck/ui'
+import { GameCanvas, GameShell, Icon, ResultOverlay } from '@gujuck/ui'
 import type { CanvasStage } from '@gujuck/game-core'
 import { ArcheryGame } from '../game/ArcheryGame'
 import type { Match } from '../useMatch'
@@ -50,6 +50,7 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
             </span>
           </div>
           <button className="gj-btn ar-btn--sm" onClick={match.resign} disabled={Boolean(result)}>
+            <Icon name="flag" size={15} />
             기권
           </button>
         </div>
@@ -78,7 +79,10 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
               : board.yourTurn
                 ? '내 차례 · 당겼다 놓으세요'
                 : '상대 차례…'}
-            <span className="ar-wind">{windLabel(board.wind)}</span>
+            <span className="ar-wind">
+              <Icon name="wind" size={14} label="바람" />
+              {windLabel(board.wind)}
+            </span>
           </div>
         </div>
       }
@@ -89,7 +93,9 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
 
       <ResultOverlay
         open={Boolean(result)}
-        title={result?.won ? '이겼어요! 🎉' : '졌어요 😢'}
+        title={result?.won ? '이겼어요!' : '졌어요'}
+        icon={result?.won ? 'trophy' : 'target'}
+        tone={result?.won ? 'accent' : 'muted'}
         description={
           result && (
             <>

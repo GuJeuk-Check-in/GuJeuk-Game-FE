@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { RankingEntry } from '@gujuck/api'
-import { GameShell } from '@gujuck/ui'
+import { GameShell, Icon } from '@gujuck/ui'
 import { authApi } from '../api'
 import type { OnlineProfile } from '../useMatch'
 
@@ -43,6 +43,7 @@ export function LobbyScreen({
             <div className="ttt-lobby__rating">레이팅 {profile?.rating ?? '-'}</div>
           </div>
           <button className="gj-btn ttt-btn--sm" onClick={onLogout}>
+            <Icon name="logout" size={15} />
             로그아웃
           </button>
         </div>
@@ -52,7 +53,7 @@ export function LobbyScreen({
         {notice && <p className="ttt-notice">{notice}</p>}
 
         <button className="gj-btn gj-btn--primary" onClick={onCreateRoom}>
-          방 만들기
+          <Icon name="plus" size={17} />방 만들기
         </button>
 
         <form
@@ -75,11 +76,15 @@ export function LobbyScreen({
           </button>
         </form>
 
-        <button className="gj-btn ttt-ghost" onClick={onPlayLocal}>
+        <button className="gj-btn gj-btn--ghost" onClick={onPlayLocal}>
+          <Icon name="bot" size={16} />
           AI와 연습
         </button>
 
-        <div className="ttt-rank__title">랭킹</div>
+        <div className="ttt-rank__title">
+          <Icon name="trophy" size={15} />
+          랭킹
+        </div>
         {ranking.length === 0 ? (
           <p className="ttt-rank__empty">아직 기록이 없어요. 첫 승자가 되어보세요.</p>
         ) : (

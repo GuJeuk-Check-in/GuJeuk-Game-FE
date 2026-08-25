@@ -1,4 +1,4 @@
-import { GameShell, ResultOverlay } from '@gujuck/ui'
+import { GameShell, Icon, ResultOverlay } from '@gujuck/ui'
 import { Board } from '../components/Board'
 import { MARKS_PER_PLAYER } from '../game/rules'
 import type { Match } from '../useMatch'
@@ -33,6 +33,7 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
             </span>
           </div>
           <button className="gj-btn ttt-btn--sm" onClick={match.resign} disabled={Boolean(result)}>
+            <Icon name="flag" size={15} />
             기권
           </button>
         </div>
@@ -62,7 +63,9 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
 
       <ResultOverlay
         open={Boolean(result)}
-        title={result?.won ? '이겼어요! 🎉' : '졌어요 😢'}
+        title={result?.won ? '이겼어요!' : '졌어요'}
+        icon={result?.won ? 'trophy' : 'users'}
+        tone={result?.won ? 'accent' : 'muted'}
         description={
           result && (
             <>
