@@ -1,5 +1,5 @@
 import { Bodies, Body, Composite, Engine } from 'matter-js'
-import { GameLoop, PointerInput, clamp } from '@gujuck/game-core'
+import { GameLoop, PointerInput, clamp, lerp } from '@gujuck/game-core'
 import type { CanvasStage, PointerPoint } from '@gujuck/game-core'
 
 /**
@@ -100,6 +100,13 @@ const MAX_ARROW_SPEED = 19
 const WIND_FORCE = 0.00016
 /** 과녁에 꽂힌 화살은 이만큼만 남긴다. 계속 쌓이면 과녁이 안 보인다. */
 const MAX_STUCK_ARROWS = 12
+/**
+ * 하늘과 땅을 세계 밖으로 이만큼 더 칠한다.
+ *
+ * 카메라가 움직이면 세계 경계 너머가 화면에 들어온다. 거기까지 칠하지 않으면
+ * 배경색 그대로인 띠가 보인다. 세계를 넓히는 것보다 칠만 넘기는 편이 싸다.
+ */
+const BLEED = 700
 /** 물리 갱신 간격. 미리 돌려보는 쪽과 화면이 같은 값을 써야 결과가 같다. */
 const STEP_SEC = 1 / 60
 /** 미리 돌려볼 때의 안전 상한. 여기 닿으면 잃은 화살로 본다. */
@@ -122,8 +129,29 @@ export interface Camera {
   zoom: number
 }
 
-/** 세계 전체를 담는 카메라. 지금까지의 화면과 같다. */
+/** 세계 전체를 담는 카메라. 개편 전 화면과 같다. */
 export const FULL_VIEW: Camera = { x: WORLD_W / 2, y: WORLD_H / 2, zoom: 1 }
+
+/**
+ * 조준할 때 보여줄 세계 영역.
+ *
+ * 궁수만 크게 잡으면 과녁이 화면 밖으로 나가 어디를 겨누는지 알 수 없다.
+ * 사거리 전체를 보여주고, 과녁을 크게 보는 일은 조준경이 맡는다.
+ */
+const AIM_VIEW_W = 820
+const AIM_VIEW_H = 430
+/** 비행 중. 포물선이 눈에 들어오도록 조금 넓게 잡는다. */
+const FLIGHT_VIEW_W = 700
+const FLIGHT_VIEW_H = 440
+/** 착탄 순간. 어느 링에 꽂혔는지 읽히는 크기다. */
+const IMPACT_VIEW_W = 280
+const IMPACT_VIEW_H = 210
+/** 착탄 뒤 과녁을 보여주고 있는 시간(스텝). 60스텝이 1초다. */
+const IMPACT_HOLD_STEPS = 54
+/** 카메라가 목표로 다가가는 비율. 스텝마다 남은 거리의 이만큼을 좁힌다. */
+const CAMERA_EASE = 0.14
+/** 세계 위쪽으로 이만큼까지는 따라 올라가도 된다. 높은 탄도를 담기 위함이다. */
+const CAMERA_SKY_MARGIN = 260
 
 export interface ViewSize {
   width: number
@@ -136,6 +164,63 @@ export interface ViewSize {
  * 순수 함수로 둔 이유는 이 값이 조준 좌표 변환과 렌더 양쪽에 쓰이기 때문이다.
  * 둘이 어긋나면 누른 자리와 그려지는 자리가 달라진다.
  */
+/** 이 세계 영역이 다 보이는 배율. 화면 비율이 달라도 같은 범위를 담는다. */
+export function zoomToFit(view: ViewSize, worldW: number, worldH: number): number {
+  const base = Math.min(view.width / WORLD_W, view.height / WORLD_H)
+  const need = Math.min(view.width / worldW, view.height / worldH)
+  return need / base
+}
+
+/** 이 배율에서 화면에 들어오는 세계 크기. */
+export function visibleSize(view: ViewSize, zoom: number): { w: number; h: number } {
+  const base = Math.min(view.width / WORLD_W, view.height / WORLD_H)
+  const scale = base * zoom
+  return { w: view.width / scale, h: view.height / scale }
+}
+
+/**
+ * 보이는 영역이 세계를 벗어나지 않게 중심을 당긴다.
+ *
+ * 가로는 세계 밖을 보여줄 이유가 없다(하늘도 땅도 거기서 끝난다). 세로는
+ * 위로만 여유를 준다 — 높은 탄도는 세계 천장 위로 올라간다.
+ */
+export function clampCamera(view: ViewSize, camera: Camera): Camera {
+  const vis = visibleSize(view, camera.zoom)
+  const halfW = vis.w / 2
+  const halfH = vis.h / 2
+
+  const x = vis.w >= WORLD_W ? WORLD_W / 2 : clamp(camera.x, halfW, WORLD_W - halfW)
+
+  const top = -CAMERA_SKY_MARGIN + halfH
+  const bottom = WORLD_H - halfH
+  const y =
+    vis.h >= WORLD_H + CAMERA_SKY_MARGIN
+      ? WORLD_H / 2
+      : clamp(camera.y, Math.min(top, bottom), bottom)
+
+  return { x, y, zoom: camera.zoom }
+}
+
+/** 조준 중. 궁수부터 과녁까지 사거리 전체를 담는다. */
+export function aimCamera(view: ViewSize): Camera {
+  const zoom = zoomToFit(view, AIM_VIEW_W, AIM_VIEW_H)
+  return clampCamera(view, { x: 440, y: 300, zoom })
+}
+
+/** 비행 중. 화살을 따라간다. */
+export function flightCamera(view: ViewSize, x: number, y: number): Camera {
+  return clampCamera(view, { x, y, zoom: zoomToFit(view, FLIGHT_VIEW_W, FLIGHT_VIEW_H) })
+}
+
+/** 착탄 직후. 과녁으로 붙어 어디에 꽂혔는지 보여준다. */
+export function impactCamera(view: ViewSize): Camera {
+  return clampCamera(view, {
+    x: TARGET_X,
+    y: TARGET_Y,
+    zoom: zoomToFit(view, IMPACT_VIEW_W, IMPACT_VIEW_H),
+  })
+}
+
 export function cameraTransform(
   view: ViewSize,
   camera: Camera,
@@ -226,8 +311,10 @@ export class ArcheryGame {
   private armed = false
   private wind = 0
 
-  /** 지금 보고 있는 곳. 아직은 늘 세계 전체다. */
+  /** 지금 보고 있는 곳. 매 스텝 목표 쪽으로 조금씩 다가간다. */
   private camera: Camera = FULL_VIEW
+  /** 착탄 뒤 과녁을 보여주고 있는 남은 스텝. */
+  private impactHold = 0
 
   private aiming = false
   /** 누른 지점과 지금 끌고 있는 지점. 둘 다 화면 좌표다. */
@@ -285,6 +372,8 @@ export class ArcheryGame {
   reset(): void {
     this.clearArrow()
     this.stuck = []
+    this.impactHold = 0
+    this.camera = aimCamera(this.stage)
     this.armed = false
     this.aiming = false
     this.downPoint = null
@@ -322,6 +411,8 @@ export class ArcheryGame {
   }
 
   private update(): void {
+    this.tickCamera()
+
     const arrow = this.arrow
     const input = this.arrowInput
     if (!arrow || !input) return
@@ -334,6 +425,34 @@ export class ArcheryGame {
     this.flownSteps += 1
     // 어디에 맞았는지는 이미 정해져 있다. 여기서는 도착 시점만 본다.
     if (this.flownSteps >= this.arrowSteps) this.finishShot()
+  }
+
+  /**
+   * 카메라를 목표 쪽으로 한 스텝 당긴다.
+   *
+   * 목표로 즉시 튀면 어지럽다. 남은 거리의 일정 비율만 좁히면 가까울수록 느려져
+   * 멈추는 느낌이 자연스럽다. 물리와 무관하므로 결정성에는 영향이 없다.
+   */
+  private tickCamera(): void {
+    if (this.impactHold > 0) this.impactHold -= 1
+
+    const want = this.desiredCamera()
+    const now = this.camera
+    this.camera = {
+      x: lerp(now.x, want.x, CAMERA_EASE),
+      y: lerp(now.y, want.y, CAMERA_EASE),
+      zoom: lerp(now.zoom, want.zoom, CAMERA_EASE),
+    }
+  }
+
+  /** 지금 상황에서 카메라가 있어야 할 자리. */
+  private desiredCamera(): Camera {
+    if (this.impactHold > 0) return impactCamera(this.stage)
+
+    const arrow = this.arrow
+    if (arrow) return flightCamera(this.stage, arrow.position.x, arrow.position.y)
+
+    return aimCamera(this.stage)
   }
 
   /** 확정된 결과를 적용하고 알린다. 루프가 부르든 안전망이 부르든 같다. */
@@ -353,6 +472,11 @@ export class ArcheryGame {
       })
       // 오래된 것부터 걷어낸다. 계속 쌓이면 과녁이 화살에 덮인다.
       while (this.stuck.length > MAX_STUCK_ARROWS) this.stuck.shift()
+    }
+
+    // 과녁까지 간 발은 어디에 꽂혔는지 잠깐 보여준다. 땅에 떨어졌으면 볼 게 없다.
+    if (result.outcome === 'target' || result.outcome === 'over') {
+      this.impactHold = IMPACT_HOLD_STEPS
     }
 
     const by = this.arrowBy
@@ -491,17 +615,17 @@ export class ArcheryGame {
     sky.addColorStop(0, '#16203a')
     sky.addColorStop(1, '#243352')
     ctx.fillStyle = sky
-    ctx.fillRect(0, 0, WORLD_W, GROUND_Y)
+    ctx.fillRect(-BLEED, -BLEED, WORLD_W + BLEED * 2, GROUND_Y + BLEED)
   }
 
   private drawGround(ctx: CanvasRenderingContext2D): void {
     ctx.fillStyle = '#2c4a30'
-    ctx.fillRect(0, GROUND_Y, WORLD_W, WORLD_H - GROUND_Y)
+    ctx.fillRect(-BLEED, GROUND_Y, WORLD_W + BLEED * 2, WORLD_H - GROUND_Y + BLEED)
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
     ctx.lineWidth = 2
     ctx.beginPath()
-    ctx.moveTo(0, GROUND_Y)
-    ctx.lineTo(WORLD_W, GROUND_Y)
+    ctx.moveTo(-BLEED, GROUND_Y)
+    ctx.lineTo(WORLD_W + BLEED, GROUND_Y)
     ctx.stroke()
   }
 
