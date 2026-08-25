@@ -1,0 +1,137 @@
+name: Deploy Server
+
+# 서버만 따로 나간다. 프론트는 Vercel로 가고 여기는 EC2로 간다 —
+# 한 워크플로에 묶으면 한쪽 실패가 다른 쪽 배포를 막는다.
+on:
+  push:
+    branches: ['develop']
+    paths:
+      - 'server/**'
+      - '.github/workflows/deploy-server.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: gujuck-game-server-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: gradle
+
+      - name: Build jar
+        working-directory: server
+        run: ./gradlew bootJar -x test
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        id: image
+        run: |
+          set -euo pipefail
+          REF="ghcr.io/${GITHUB_REPOSITORY,,}-server:${GITHUB_SHA::7}"
+          docker build -t "$REF" server
+          docker push "$REF"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
+      - name: Copy compose file to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: 'server/docker-compose.aws.yml'
+          target: '/tmp/gujuck-game-deploy'
+          strip_components: 1
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          IMAGE_REF: ${{ steps.image.outputs.ref }}
+          GHCR_ACTOR: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JWT_SECRET: ${{ secrets.GAME_JWT_SECRET }}
+          MYSQL_PASSWORD: ${{ secrets.GAME_MYSQL_PASSWORD }}
+          MYSQL_ROOT_PASSWORD: ${{ secrets.GAME_MYSQL_ROOT_PASSWORD }}
+          CORS_ORIGINS: ${{ vars.GAME_CORS_ORIGINS }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: IMAGE_REF,GHCR_ACTOR,GHCR_TOKEN,JWT_SECRET,MYSQL_PASSWORD,MYSQL_ROOT_PASSWORD,CORS_ORIGINS
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            DIR=/home/${USER}/gujuck-game
+            mkdir -p "$DIR"
+            cp /tmp/gujuck-game-deploy/docker-compose.aws.yml "$DIR/docker-compose.yml"
+            rm -rf /tmp/gujuck-game-deploy
+
+            cd "$DIR"
+
+            # .env 를 매번 다시 쓴다. 서버에 손으로 만들어 둘 것이 없어야
+            # 인스턴스를 갈아끼울 때 배포만으로 복구된다.
+            umask 077
+            cat > .env <<EOF
+            MYSQL_DATABASE=gujuck_game
+            MYSQL_USER=game
+            MYSQL_PASSWORD=${MYSQL_PASSWORD}
+            MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+            JWT_SECRET=${JWT_SECRET}
+            CORS_ORIGINS=${CORS_ORIGINS}
+            APP_PORT=8090
+            EOF
+
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
+
+            export APP_IMAGE="$IMAGE_REF"
+            docker compose pull app
+            docker compose up -d
+            docker image prune -f
+
+            echo "기동 대기"
+            for i in $(seq 1 40); do
+              if curl -fs -o /dev/null http://127.0.0.1:8090/health; then
+                echo "local health OK (${i}번째 시도, 약 $((i * 3))초)"
+                break
+              fi
+              if [ "$i" -eq 40 ]; then
+                echo "local health FAILED"
+                docker compose logs --tail=60 app
+                exit 1
+              fi
+              sleep 3
+            done
+
+      - name: Public health check
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            STATUS=$(curl -fs -o /dev/null -w "%{http_code}" https://game-api.oijwef098234.com/health || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "public health OK (${i}번째 시도)"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "public health FAILED — Cloudflare 레코드와 Caddy 설정을 확인하세요"
+          exit 1
