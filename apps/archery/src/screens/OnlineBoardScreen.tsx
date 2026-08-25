@@ -3,6 +3,7 @@ import { GameCanvas, GameShell, Icon, ResultOverlay } from '@gujuck/ui'
 import type { CanvasStage } from '@gujuck/game-core'
 import { ArcheryGame } from '../game/ArcheryGame'
 import { AimAssist } from '../components/AimAssist'
+import { TurnTimer } from '../components/TurnTimer'
 import { OfflineBar } from '../components/OfflineBar'
 import type { Match } from '../useMatch'
 
@@ -60,14 +61,22 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
               {profile?.nickname ?? '나'} vs {opponent?.nickname ?? '상대'}
             </span>
           </div>
-          <button
-            className="gj-btn ar-btn--sm"
-            onClick={match.resign}
-            disabled={Boolean(result) || !connected}
-          >
-            <Icon name="flag" size={15} />
-            기권
-          </button>
+          <div className="ar-meta">
+            <TurnTimer
+              startedAt={match.turnAt}
+              limitSec={board.turnLimitSec}
+              mine={board.yourTurn}
+              running={!result && connected}
+            />
+            <button
+              className="gj-btn ar-btn--sm"
+              onClick={match.resign}
+              disabled={Boolean(result) || !connected}
+            >
+              <Icon name="flag" size={15} />
+              기권
+            </button>
+          </div>
         </div>
       }
       footer={
@@ -155,7 +164,12 @@ function ShotRow({ label, shots, total, count, mine }: ShotRowProps) {
       <span className="ar-scorerow__name">{label}</span>
       <span className="ar-shots">
         {Array.from({ length: slots }, (_, index) => (
-          <span key={index} className={`ar-shot ${shots[index] === undefined ? '' : 'is-done'}`}>
+          <span
+            key={index}
+            className={`ar-shot ${shots[index] === undefined ? '' : 'is-done'} ${
+              mine && index === shots.length ? 'is-next' : ''
+            }`}
+          >
             {shots[index] ?? '·'}
           </span>
         ))}

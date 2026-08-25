@@ -70,7 +70,9 @@ export function LocalBoardScreen({ onExit }: Props) {
             {Array.from({ length: ARROWS_PER_ROUND }, (_, index) => (
               <span
                 key={index}
-                className={`ar-shot ${round.shots[index] === undefined ? '' : 'is-done'}`}
+                className={`ar-shot ${round.shots[index] === undefined ? '' : 'is-done'} ${
+                  index === round.shots.length && !round.finished ? 'is-next' : ''
+                }`}
               >
                 {round.shots[index] ?? '·'}
               </span>

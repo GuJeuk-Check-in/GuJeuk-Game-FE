@@ -676,6 +676,7 @@ export class ArcheryGame {
   private render(): void {
     this.stage.fill('#0f1420')
     this.renderScene(this.stage.ctx, this.camera, this.stage)
+    this.drawWind(this.stage.ctx)
     this.drawScope(this.stage.ctx)
     // 게이지는 세계 변환 밖에서, 손가락 자리에 그린다.
     this.drawAimHud(this.stage.ctx)
@@ -928,6 +929,60 @@ export class ArcheryGame {
     ctx.fillText(hit.score === 0 ? 'MISS' : String(hit.score), x, y + 1)
     ctx.textBaseline = 'alphabetic'
 
+    ctx.restore()
+  }
+
+  /**
+   * 바람 표시.
+   *
+   * 깃발은 과녁 옆에 서 있어서 조준하는 눈이 거기까지 갔다 와야 한다. 지금
+   * 겨누는 시야 안에 방향과 세기를 같이 둔다. 깃발은 그대로 남긴다 — 세계
+   * 안에서 바람이 실제로 어떻게 부는지 보여주는 건 깃발 쪽 몫이다.
+   */
+  private drawWind(ctx: CanvasRenderingContext2D): void {
+    const strength = clamp(Math.abs(this.wind), 0, 1)
+    const calm = strength < 0.05
+    const dir = this.wind >= 0 ? 1 : -1
+    const cx = this.stage.width / 2
+    const cy = 24
+
+    ctx.save()
+    ctx.fillStyle = 'rgba(12, 16, 24, 0.72)'
+    roundedRect(ctx, cx - 58, cy - 15, 116, 30, 15)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)'
+    ctx.lineWidth = 1
+    ctx.stroke()
+
+    if (calm) {
+      ctx.fillStyle = '#8d99ae'
+      ctx.font = '700 13px system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('무풍', cx, cy)
+    } else {
+      // 화살표 길이로도 세기를 읽을 수 있게 한다. 숫자만 있으면 눈에 안 든다.
+      const len = 12 + strength * 16
+      const ax = cx - 22
+      ctx.strokeStyle = strength > 0.5 ? '#e8604c' : '#f5cf3d'
+      ctx.lineWidth = 3
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.moveTo(ax - (dir * len) / 2, cy)
+      ctx.lineTo(ax + (dir * len) / 2, cy)
+      ctx.moveTo(ax + (dir * len) / 2 - dir * 6, cy - 5)
+      ctx.lineTo(ax + (dir * len) / 2, cy)
+      ctx.lineTo(ax + (dir * len) / 2 - dir * 6, cy + 5)
+      ctx.stroke()
+      ctx.lineCap = 'butt'
+
+      ctx.fillStyle = '#e9edf5'
+      ctx.font = '700 14px system-ui, sans-serif'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(strength.toFixed(1), cx + 4, cy)
+    }
+    ctx.textBaseline = 'alphabetic'
     ctx.restore()
   }
 

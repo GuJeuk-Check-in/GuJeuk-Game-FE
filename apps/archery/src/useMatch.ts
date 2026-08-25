@@ -31,6 +31,8 @@ export interface Scoreboard {
   suddenDeath: boolean
   yourTurn: boolean
   wind: number
+  /** 서버가 한 차례에 주는 시간(초). */
+  turnLimitSec: number
 }
 
 const EMPTY_BOARD: Scoreboard = {
@@ -43,6 +45,7 @@ const EMPTY_BOARD: Scoreboard = {
   suddenDeath: false,
   yourTurn: false,
   wind: 0,
+  turnLimitSec: 45,
 }
 
 /**
@@ -65,6 +68,8 @@ export function useMatch() {
   const [board, setBoard] = useState<Scoreboard>(EMPTY_BOARD)
   const [result, setResult] = useState<MatchResult | null>(null)
   const [notice, setNotice] = useState('')
+  /** 지금 차례가 시작한 시각. 남은 시간을 화면에서 세는 데 쓴다. */
+  const [turnAt, setTurnAt] = useState(() => Date.now())
   /** 소켓이 살아 있는지. 끊기면 화면에 돌아올 길을 띄운다. */
   const [connected, setConnected] = useState(false)
 
@@ -124,6 +129,7 @@ export function useMatch() {
         case 'RESUMED': {
           const next = readBoard(message)
           setBoard(next)
+          setTurnAt(Date.now())
           setOpponent((message.opponent as OnlineProfile | undefined) ?? null)
           setResult(null)
           setPhase('playing')
@@ -136,6 +142,7 @@ export function useMatch() {
         case 'SHOT': {
           const next = readBoard(message)
           setBoard(next)
+          setTurnAt(Date.now())
           setNotice('')
 
           const game = gameRef.current
@@ -311,6 +318,7 @@ export function useMatch() {
   return {
     phase,
     connected,
+    turnAt,
     profile,
     opponent,
     roomCode,
@@ -342,5 +350,6 @@ function readBoard(message: ServerMessage): Scoreboard {
     suddenDeath: (message.suddenDeath as boolean | undefined) ?? false,
     yourTurn: (message.yourTurn as boolean | undefined) ?? false,
     wind: (message.wind as number | undefined) ?? 0,
+    turnLimitSec: (message.turnLimitSec as number | undefined) ?? 45,
   }
 }

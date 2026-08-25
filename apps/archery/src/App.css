@@ -423,3 +423,78 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---- 차례 제한 시간 -------------------------------------------------------- */
+
+.ar-timer {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  /* 상대 차례에는 있다는 것만 알면 된다. */
+  opacity: 0.5;
+}
+
+.ar-timer.is-mine {
+  opacity: 1;
+}
+
+.ar-timer__track,
+.ar-timer__fill {
+  fill: none;
+  stroke-width: 3;
+}
+
+.ar-timer__track {
+  stroke: var(--gj-surface-2);
+}
+
+.ar-timer__fill {
+  stroke: var(--gj-accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 250ms linear;
+}
+
+.ar-timer.is-urgent .ar-timer__fill {
+  stroke: var(--gj-danger);
+}
+
+.ar-timer__num {
+  position: absolute;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ar-timer.is-urgent .ar-timer__num {
+  color: var(--gj-danger);
+}
+
+/* 남은 시간이 줄어드는 링은 시간 자체를 뜻한다. 움직임을 줄이는 설정에서도
+   숫자는 그대로 세지만, 링의 전환만 끈다. */
+@media (prefers-reduced-motion: reduce) {
+  .ar-timer__fill {
+    transition: none;
+  }
+}
+
+/* ---- 점수 숫자 ------------------------------------------------------------ */
+
+/*
+ * 압축 서체는 좁은 칸에 숫자를 넣을 때 유리하고, 점수판이라는 성격도 드러낸다.
+ * 한글이 없는 서체라 숫자가 쓰이는 곳에만 건다.
+ */
+.ar-shot,
+.ar-scorerow__total,
+.ar-code,
+.ar-final {
+  font-family: 'Barlow Condensed', system-ui, sans-serif;
+  letter-spacing: 0.02em;
+}
+
+/* 지금 쏠 차례인 칸. 어디까지 왔는지 눈으로 짚어준다. */
+.ar-shot.is-next {
+  border-color: var(--gj-accent);
+  color: var(--gj-accent);
+}
