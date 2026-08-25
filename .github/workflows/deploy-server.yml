@@ -69,14 +69,13 @@ jobs:
           GHCR_ACTOR: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JWT_SECRET: ${{ secrets.GAME_JWT_SECRET }}
-          MYSQL_PASSWORD: ${{ secrets.GAME_MYSQL_PASSWORD }}
-          MYSQL_ROOT_PASSWORD: ${{ secrets.GAME_MYSQL_ROOT_PASSWORD }}
+          DB_PASSWORD: ${{ secrets.GAME_DB_PASSWORD }}
           CORS_ORIGINS: ${{ vars.GAME_CORS_ORIGINS }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: IMAGE_REF,GHCR_ACTOR,GHCR_TOKEN,JWT_SECRET,MYSQL_PASSWORD,MYSQL_ROOT_PASSWORD,CORS_ORIGINS
+          envs: IMAGE_REF,GHCR_ACTOR,GHCR_TOKEN,JWT_SECRET,DB_PASSWORD,CORS_ORIGINS
           script_stop: true
           script: |
             set -euo pipefail
@@ -92,13 +91,12 @@ jobs:
             # 인스턴스를 갈아끼울 때 배포만으로 복구된다.
             umask 077
             cat > .env <<EOF
-            MYSQL_DATABASE=gujuck_game
-            MYSQL_USER=game
-            MYSQL_PASSWORD=${MYSQL_PASSWORD}
-            MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+            DB_URL=jdbc:mysql://mysql:3306/gujuck_game?serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&useSSL=false
+            DB_USER=gameuser
+            DB_PASSWORD=${DB_PASSWORD}
             JWT_SECRET=${JWT_SECRET}
             CORS_ORIGINS=${CORS_ORIGINS}
-            APP_PORT=8090
+            JAVA_OPTS=-Xms64m -Xmx200m
             EOF
 
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
@@ -110,7 +108,7 @@ jobs:
 
             echo "기동 대기"
             for i in $(seq 1 40); do
-              if curl -fs -o /dev/null http://127.0.0.1:8090/health; then
+              if curl -fs -o /dev/null http://127.0.0.1:8095/health; then
                 echo "local health OK (${i}번째 시도, 약 $((i * 3))초)"
                 break
               fi

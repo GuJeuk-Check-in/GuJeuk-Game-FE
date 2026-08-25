@@ -1,47 +1,25 @@
-# EC2 배포용. 체크인 서버(prod 8080 / stag 8081)와 같은 호스트에 얹되
-# 포트와 DB를 완전히 분리한다. 게임과 체크인은 도메인도 데이터도 겹치지 않는다.
+# EC2 배포용.
+#
+# MySQL을 새로 띄우지 않는다. 이 호스트는 3.8GB 중 여유가 700MB 남짓인데
+# MySQL 컨테이너 하나가 ~460MB를 쓴다. 하나 더 올리면 체크인 prod 앱이
+# OOM으로 죽는다(스왑도 없다). 대신 체크인 prod MySQL에 별도 DB와 계정을
+# 만들어 쓴다 — gujuck_game / gameuser.
+#
+# 인스턴스를 키우면 그때 전용 MySQL로 분리하는 편이 낫다.
 services:
   app:
     image: ${APP_IMAGE:?APP_IMAGE is required}
-    container_name: ${APP_CONTAINER_NAME:-gujuck-game-app}
+    container_name: gujuck-game-app
     restart: unless-stopped
-    environment:
-      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-gujuck_game}?serverTimezone=Asia/Seoul
-      DB_USER: ${MYSQL_USER:?MYSQL_USER is required}
-      DB_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
-      CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS is required}
-      JAVA_OPTS: ${JAVA_OPTS:--Xms64m -Xmx160m}
+    env_file: .env
     ports:
-      # Caddy가 host.docker.internal:8090 으로 붙는다. 외부에 직접 열지 않는다.
-      - "127.0.0.1:${APP_PORT:-8090}:8090"
-    depends_on:
-      mysql:
-        condition: service_healthy
+      # 8090은 monitor-bot이 쓰고 있어 8095다. 외부에 직접 열지 않고
+      # Caddy가 host.docker.internal:8095로 붙는다.
+      - '127.0.0.1:8095:8090'
+    networks:
+      - gujeuk-aws-prod_default
 
-  mysql:
-    image: mysql:8.0
-    container_name: ${MYSQL_CONTAINER_NAME:-gujuck-game-mysql}
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-gujuck_game}
-      MYSQL_USER: ${MYSQL_USER:?MYSQL_USER is required}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
-      TZ: Asia/Seoul
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --default-time-zone=+09:00
-    volumes:
-      - game_mysql:/var/lib/mysql
-    healthcheck:
-      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -p"$${MYSQL_ROOT_PASSWORD}" --silent']
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
-
-volumes:
-  game_mysql:
-    name: gujuck-game-mysql-data
+networks:
+  # 체크인 prod 스택이 만든 네트워크. 여기 붙어야 mysql 호스트명이 풀린다.
+  gujeuk-aws-prod_default:
+    external: true
