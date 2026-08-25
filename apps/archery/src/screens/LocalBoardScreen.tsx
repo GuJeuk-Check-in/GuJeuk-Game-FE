@@ -1,7 +1,8 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { GameCanvas, GameShell, Icon, ResultOverlay } from '@gujuck/ui'
 import type { CanvasStage } from '@gujuck/game-core'
 import { ArcheryGame } from '../game/ArcheryGame'
+import { AimAssist } from '../components/AimAssist'
 import { ARROWS_PER_ROUND, useLocalRound } from '../useLocalRound'
 
 interface Props {
@@ -16,6 +17,8 @@ interface Props {
  */
 export function LocalBoardScreen({ onExit }: Props) {
   const round = useLocalRound()
+  // 조작 도우미가 게임 인스턴스를 직접 부른다. 상태로 들고 있어야 붙는 순간 다시 그린다.
+  const [game, setGame] = useState<ArcheryGame | null>(null)
 
   const handleMount = useCallback(
     (stage: CanvasStage) => {
@@ -25,8 +28,12 @@ export function LocalBoardScreen({ onExit }: Props) {
         onChange: round.onSnapshot,
       })
       round.attach(game)
+      setGame(game)
 
-      return () => game.destroy()
+      return () => {
+        setGame(null)
+        game.destroy()
+      }
     },
     // 마운트 시 한 번만 붙인다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -70,6 +77,7 @@ export function LocalBoardScreen({ onExit }: Props) {
             ))}
           </span>
           <div className="ar-status">{statusText(round.finished, round.snapshot.flying)}</div>
+          <AimAssist game={game} canShoot={round.snapshot.canShoot} />
         </div>
       }
     >

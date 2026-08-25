@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { GameCanvas, GameShell, Icon, ResultOverlay } from '@gujuck/ui'
 import type { CanvasStage } from '@gujuck/game-core'
 import { ArcheryGame } from '../game/ArcheryGame'
+import { AimAssist } from '../components/AimAssist'
 import { OfflineBar } from '../components/OfflineBar'
 import type { Match } from '../useMatch'
 
@@ -21,6 +22,8 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
   const { board, result, notice, opponent, profile, connected } = match
   /** 화살이 날거나 착탄을 보여주는 중. 결과창을 그 뒤로 미룬다. */
   const [busy, setBusy] = useState(false)
+  const [canShoot, setCanShoot] = useState(false)
+  const [game, setGame] = useState<ArcheryGame | null>(null)
 
   const handleMount = useCallback(
     (stage: CanvasStage) => {
@@ -28,11 +31,16 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
         stage,
         onShotLanded: match.handleShotLanded,
         // 차례 표시는 서버 값을 쓴다. 여기서는 결과창을 언제 띄울지만 본다.
-        onChange: (snapshot) => setBusy(snapshot.busy),
+        onChange: (snapshot) => {
+          setBusy(snapshot.busy)
+          setCanShoot(snapshot.canShoot)
+        },
       })
       match.attachGame(game)
+      setGame(game)
 
       return () => {
+        setGame(null)
         match.attachGame(null)
         game.destroy()
       }
@@ -86,6 +94,7 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
               : board.yourTurn
                 ? '내 차례 · 당겼다 놓으세요'
                 : '상대 차례…'}
+            <AimAssist game={game} canShoot={canShoot} />
             <span className="ar-wind">
               <Icon name="wind" size={14} label="바람" />
               {windLabel(board.wind)}

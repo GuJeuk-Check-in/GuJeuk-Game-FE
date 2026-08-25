@@ -42,6 +42,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -381,4 +382,44 @@
   font-size: 13px;
   font-weight: 700;
   color: var(--gj-danger);
+}
+
+/* ---- 조작 도우미 ---------------------------------------------------------- */
+
+.ar-assist {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ar-assist__panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--gj-radius);
+  background: var(--gj-surface);
+  border: 1px solid var(--gj-border);
+}
+
+.ar-assist__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ar-assist__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gj-text-dim);
+}
+
+.ar-assist__value {
+  min-width: 3.2rem;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }

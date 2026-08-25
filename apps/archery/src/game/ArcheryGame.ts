@@ -351,6 +351,8 @@ export class ArcheryGame {
   /** 누른 지점과 지금 끌고 있는 지점. 둘 다 화면 좌표다. */
   private downPoint: PointerPoint | null = null
   private dragPoint: PointerPoint | null = null
+  /** 드래그 없이 정한 조준. 조작 도우미가 쓴다. */
+  private assist: { angle: number; power: number } | null = null
 
   constructor(options: ArcheryGameOptions) {
     this.stage = options.stage
@@ -392,6 +394,30 @@ export class ArcheryGame {
     this.armed = canShoot && this.arrow === null
     this.wind = wind
     this.emit()
+  }
+
+  /**
+   * 드래그 없이 조준한다.
+   *
+   * WCAG 2.2 AA는 드래그로만 할 수 있는 동작에 단일 포인터 대체 수단을 두도록
+   * 요구한다. 지금 이 게임은 당겨서 쏘는 것 말고는 쏠 방법이 없다. 각도와
+   * 세기를 값으로 받아 두면 버튼으로도, 키보드로도 쏠 수 있다.
+   */
+  setAssist(angleDeg: number | null, power = 0): void {
+    this.assist =
+      angleDeg === null ? null : { angle: (angleDeg * Math.PI) / 180, power: clamp(power, 0, 1) }
+    this.emit()
+  }
+
+  /** 조작 도우미로 정해 둔 값으로 쏜다. 쏘지 못했으면 false. */
+  fireAssist(): boolean {
+    const aim = this.assist
+    if (!aim || !this.armed || this.arrow !== null) return false
+    if (aim.power <= 0 || aim.angle < 0 || aim.angle > MAX_ANGLE) return false
+
+    this.armed = false
+    this.launch({ angle: aim.angle, power: aim.power, wind: this.wind }, 'me')
+    return true
   }
 
   /** 상대가 쏜 발을 같은 입력으로 재생한다. */
@@ -631,7 +657,8 @@ export class ArcheryGame {
   private aimState(): { angle: number; power: number } | null {
     const down = this.downPoint
     const drag = this.dragPoint
-    if (!this.aiming || !down || !drag) return null
+    // 손으로 당기고 있지 않으면 조작 도우미가 정해 둔 값을 보여준다.
+    if (!this.aiming || !down || !drag) return this.assist
 
     // 활을 당기듯 뒤로 끈다. 당긴 반대 방향으로 날아간다.
     const dx = down.x - drag.x
