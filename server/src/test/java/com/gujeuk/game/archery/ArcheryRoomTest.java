@@ -228,6 +228,39 @@ class ArcheryRoomTest {
     }
 
     @Test
+    void 차례_시간을_넘기면_0점으로_적히고_넘어간다() {
+        assertThat(whoseTurn()).isSameAs(host());
+
+        listener.runScheduled();
+
+        assertThat(host().getShots()).containsExactly(0);
+        assertThat(whoseTurn()).isSameAs(guest());
+        // 날아간 화살이 없으므로 상대 화면이 재생하면 안 된다.
+        assertThat(listener.lastShotOf(guest()).get("timedOut")).isEqualTo(true);
+    }
+
+    @Test
+    void 대결_중_방을_떠나면_상대가_이긴다() {
+        room.leave(host());
+
+        assertThat(room.getState()).isEqualTo(ArcheryRoomState.FINISHED);
+        assertThat(listener.finishedWinner).isEqualTo(2L);
+        assertThat(listener.finishedReason).isEqualTo(EndReason.RESIGN);
+    }
+
+    @Test
+    void 대기_중_방을_떠나면_방이_닫힌다() {
+        FakeListener fake = new FakeListener();
+        ArcheryRoom waiting = new ArcheryRoom("CODE03", fake, fixedRandom(true));
+        waiting.open(1L, "host", 1200, null);
+
+        waiting.leave(waiting.getHost());
+
+        assertThat(waiting.getState()).isEqualTo(ArcheryRoomState.FINISHED);
+        assertThat(fake.disposed).isTrue();
+    }
+
+    @Test
     void 기권하면_상대가_이긴다() {
         room.resign(host());
 
@@ -243,6 +276,7 @@ class ArcheryRoomTest {
         private Long finishedWinner;
         private EndReason finishedReason;
         private Boolean lastSuddenDeath;
+        private boolean disposed;
 
         @Override
         public void send(ArcherySeat seat, Map<String, Object> message) {
@@ -291,6 +325,7 @@ class ArcheryRoomTest {
 
         @Override
         public void dispose(ArcheryRoom room) {
+            disposed = true;
         }
 
         @Override

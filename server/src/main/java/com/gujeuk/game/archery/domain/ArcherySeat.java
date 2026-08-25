@@ -19,6 +19,10 @@ public class ArcherySeat {
     @Setter
     private WebSocketSession session;
 
+    /** 방이 이 자리를 떠난 것으로 표시했는지. */
+    @Setter
+    private boolean away = false;
+
     /** 발마다의 점수. 크기가 곧 쏜 발수다. */
     private final List<Integer> shots = new ArrayList<>();
 
@@ -34,7 +38,14 @@ public class ArcherySeat {
         return shots.stream().mapToInt(Integer::intValue).sum();
     }
 
+    /**
+     * 지금 이 자리에 사람이 붙어 있는지.
+     *
+     * session.isOpen()만 보면 세션이 없는 경우와 아직 닫히기 전이지만 이미
+     * 떠난 경우를 가르지 못한다. 방이 disconnect를 받은 시점에 away를 올리고
+     * 재접속에서 내린다.
+     */
     public boolean isConnected() {
-        return session != null && session.isOpen();
+        return !away && (session == null || session.isOpen());
     }
 }

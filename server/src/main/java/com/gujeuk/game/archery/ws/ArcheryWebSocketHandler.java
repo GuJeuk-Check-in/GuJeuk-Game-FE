@@ -103,6 +103,13 @@ public class ArcheryWebSocketHandler extends TextWebSocketHandler {
 
             case "RESIGN" -> withSeat(connection, ArcheryRoom::resign);
 
+            // 로비로 돌아갈 때 보낸다. 이걸 안 보내면 방이 서버에 그대로 남아
+            // 재접속이 그 방을 찾아 붙는다.
+            case "LEAVE_ROOM" -> {
+                withSeat(connection, ArcheryRoom::leave);
+                connection.setRoom(null);
+            }
+
             default -> send(session, Map.of("type", "ERROR", "message", "알 수 없는 요청입니다: " + type));
         }
     }

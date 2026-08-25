@@ -34,6 +34,14 @@ public class ArcheryRoom {
     /** 접속이 끊긴 뒤 돌아올 때까지 기다리는 시간. 넘기면 몰수패. */
     private static final int RECONNECT_GRACE_SEC = 30;
     private static final int MAX_SCORE_PER_ARROW = 10;
+    /**
+     * 한 차례에 주는 시간. 넘기면 0점으로 처리하고 차례를 넘긴다.
+     *
+     * 몰수하지 않는 이유는, 잠깐 자리를 비운 것과 나간 것을 여기서 가를 수
+     * 없기 때문이다. 0점을 쌓으면 정말 없는 사람은 발수를 다 쓰고 점수로
+     * 지고, 돌아온 사람은 남은 발로 이어갈 수 있다.
+     */
+    private static final int TURN_LIMIT_SEC = 45;
 
     @Getter
     private final String code;
@@ -57,6 +65,7 @@ public class ArcheryRoom {
 
     private final Map<Long, ArcheryRoomListener.Cancellable> pendingForfeits = new HashMap<>();
     private ArcheryRoomListener.Cancellable pendingDispose;
+    private ArcheryRoomListener.Cancellable pendingTurnTimeout;
 
     public ArcheryRoom(String code, ArcheryRoomListener listener, Random random) {
         this.code = code;
@@ -96,6 +105,7 @@ public class ArcheryRoom {
 
         sendState(host, "GAME_START");
         sendState(guest, "GAME_START");
+        armTurnTimer();
     }
 
     /** -1 ~ 1, 소수 한 자리. 라운드마다 새로 뽑는다. */
@@ -123,6 +133,23 @@ public class ArcheryRoom {
             throw GameException.badRequest("점수가 올바르지 않습니다.");
         }
 
+        record(seat, angle, power, score, false);
+    }
+
+    /**
+     * 차례가 시간을 넘겼다. 0점으로 적고 넘긴다.
+     *
+     * 지나간 타이머일 수 있으므로 지금도 그 사람 차례인지 다시 본다.
+     */
+    private synchronized void timeoutTurn(ArcherySeat seat) {
+        if (state != ArcheryRoomState.PLAYING) return;
+        if (seat != turn) return;
+
+        record(seat, 0, 0, 0, true);
+    }
+
+    /** 한 발을 점수판에 적고 차례를 넘긴다. 쏜 것이든 시간을 넘긴 것이든 같다. */
+    private void record(ArcherySeat seat, double angle, double power, int score, boolean timedOut) {
         seat.getShots().add(score);
 
         ArcherySeat other = opponentOf(seat);
@@ -136,6 +163,8 @@ public class ArcheryRoom {
         // 키를 나눠야 한다. 한 키를 같이 쓰면 나중에 넣는 쪽이 덮어쓴다.
         shot.put("shotWind", wind);
         shot.put("score", score);
+        // 시간을 넘겨 적힌 발은 날아간 화살이 없다. 상대 화면이 재생하면 안 된다.
+        shot.put("timedOut", timedOut);
 
         if (roundDone) {
             round += 1;
@@ -150,7 +179,23 @@ public class ArcheryRoom {
         sendShot(seat, shot, true);
         sendShot(other, shot, false);
 
-        if (isDecided()) finishByScore();
+        if (isDecided()) {
+            finishByScore();
+            return;
+        }
+        armTurnTimer();
+    }
+
+    private void armTurnTimer() {
+        cancelTurnTimer();
+        ArcherySeat current = turn;
+        pendingTurnTimeout = listener.schedule(() -> timeoutTurn(current), TURN_LIMIT_SEC);
+    }
+
+    private void cancelTurnTimer() {
+        if (pendingTurnTimeout == null) return;
+        pendingTurnTimeout.cancel();
+        pendingTurnTimeout = null;
     }
 
     /** 정해진 발수를 다 쐈고 총점이 갈렸는지. 동점이면 서든데스로 이어진다. */
@@ -168,6 +213,27 @@ public class ArcheryRoom {
         finish(winner, EndReason.SCORE);
     }
 
+    /**
+     * 방을 떠난다.
+     *
+     * 이게 없어서 로비로 돌아가도 방이 서버에 남았고, 새로고침하면 재접속이
+     * 그 방을 찾아 붙여 취소한 방으로 되돌아갔다.
+     */
+    public synchronized void leave(ArcherySeat seat) {
+        if (state == ArcheryRoomState.FINISHED) return;
+
+        if (state == ArcheryRoomState.WAITING) {
+            // 아직 상대가 없다. 방을 접는다.
+            cancelDispose();
+            state = ArcheryRoomState.FINISHED;
+            listener.dispose(this);
+            return;
+        }
+
+        // 대결 중에 나가는 것은 기권과 같다.
+        finish(opponentOf(seat), EndReason.RESIGN);
+    }
+
     public synchronized void resign(ArcherySeat seat) {
         if (state != ArcheryRoomState.PLAYING) return;
         finish(opponentOf(seat), EndReason.RESIGN);
@@ -176,6 +242,8 @@ public class ArcheryRoom {
     // ---- 접속 끊김 --------------------------------------------------------
 
     public synchronized void disconnect(ArcherySeat seat) {
+        seat.setAway(true);
+
         if (state == ArcheryRoomState.FINISHED) {
             if (!bothConnected()) listener.dispose(this);
             return;
@@ -198,6 +266,7 @@ public class ArcheryRoom {
         if (seat == null || state == ArcheryRoomState.FINISHED) return false;
 
         seat.setSession(session);
+        seat.setAway(false);
 
         ArcheryRoomListener.Cancellable pending = pendingForfeits.remove(memberId);
         if (pending != null) pending.cancel();
@@ -241,6 +310,7 @@ public class ArcheryRoom {
         pendingForfeits.values().forEach(ArcheryRoomListener.Cancellable::cancel);
         pendingForfeits.clear();
         cancelDispose();
+        cancelTurnTimer();
 
         ArcherySeat loser = opponentOf(winner);
         var change = listener.finish(winner.getMemberId(), loser.getMemberId(), reason);
@@ -299,6 +369,7 @@ public class ArcheryRoom {
         message.put("wind", wind);
         message.put("round", round);
         message.put("arrowsPerRound", ARROWS_PER_ROUND);
+        message.put("turnLimitSec", TURN_LIMIT_SEC);
         message.put("myShots", seat.getShots());
         message.put("theirShots", other == null ? java.util.List.of() : other.getShots());
         message.put("myTotal", seat.total());
