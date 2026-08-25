@@ -243,6 +243,11 @@ export class ArcheryGame {
     const input = this.arrowInput
     if (!arrow || !input) return
 
+    // 과녁 평면을 지나는 순간의 높이를 구하려면 스텝 이전 위치가 필요하다.
+    // position은 Engine.update가 제자리에서 고치므로 숫자를 복사해 둔다.
+    const prevX = arrow.position.x
+    const prevY = arrow.position.y
+
     // 바람은 매 스텝 더해지는 수평 상수력이다. 한 번만 주면 초속만 바뀌고
     // 비행 중 휘어지는 느낌이 안 난다.
     Body.applyForce(arrow, arrow.position, {
@@ -260,11 +265,17 @@ export class ArcheryGame {
     Body.setAngle(arrow, Math.atan2(arrow.velocity.y, arrow.velocity.x))
 
     const { x, y } = arrow.position
-    if (x >= TARGET_X - TARGET_HALF_W) {
+    const plane = TARGET_X - TARGET_HALF_W
+    if (x >= plane) {
+      // 스텝이 끝난 위치는 평면을 최대 24px 지나쳐 있다. 그 좌표로 점수를 매기면
+      // 실제 통과 높이와 최대 16px 어긋나는데, 링 간격이 10px이라 점수가 실제로
+      // 바뀐다. 직전 위치와 이어 평면을 지나는 지점을 구한다.
+      const hitY = crossingY(prevX, prevY, x, y, plane)
+
       // 평면을 지났다고 다 맞은 게 아니다. 이 조건은 x만 보므로 과녁 한참 위로
       // 넘어간 화살도 여기로 온다. 링 안팎을 갈라두지 않으면 0점짜리 화살이
       // 과녁 위 허공에 꽂힌 채 남는다.
-      this.land(y, Math.abs(y - TARGET_Y) <= RING_OUTER ? 'target' : 'over')
+      this.land(hitY, Math.abs(hitY - TARGET_Y) <= RING_OUTER ? 'target' : 'over')
     } else if (y >= GROUND_Y) {
       this.land(null, 'ground')
     } else if (x > WORLD_W + 100 || y > WORLD_H + 200) {
@@ -611,6 +622,25 @@ export class ArcheryGame {
     ctx.fillStyle = ratio > 0.85 ? '#e8604c' : '#4d8dff'
     ctx.fillRect(barX, barY, 80 * ratio, 8)
   }
+}
+
+/**
+ * 두 스텝을 직선으로 이어 x = plane 을 지나는 높이를 구한다.
+ *
+ * 물리 스텝은 이산적이라 평면을 정확히 밟지 않는다. 보간하지 않으면 착탄점이
+ * 스텝 크기에 따라 흔들리고, 꽂힌 화살도 실제 통과 높이보다 아래에 그려진다.
+ */
+export function crossingY(
+  prevX: number,
+  prevY: number,
+  x: number,
+  y: number,
+  plane: number,
+): number {
+  const dx = x - prevX
+  // 뒤로 가거나 제자리면 이을 구간이 없다.
+  if (dx <= 0) return y
+  return prevY + (y - prevY) * clamp((plane - prevX) / dx, 0, 1)
 }
 
 /** 중심에서 떨어진 거리로 점수를 정한다. 가장 바깥 링을 넘으면 0점. */
