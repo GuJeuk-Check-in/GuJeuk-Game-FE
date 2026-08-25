@@ -42,6 +42,13 @@ public class ArcheryRoom {
      * 지고, 돌아온 사람은 남은 발로 이어갈 수 있다.
      */
     private static final int TURN_LIMIT_SEC = 45;
+    /**
+     * 한 사람이 쏠 수 있는 최대 발수.
+     *
+     * 서든데스는 동점이면 그대로 이어져 이론상 끝나지 않는다. 이 발수에 닿으면
+     * 실제 양궁 동점 규칙으로 가른다.
+     */
+    private static final int MAX_ARROWS = 15;
 
     @Getter
     private final String code;
@@ -189,6 +196,7 @@ public class ArcheryRoom {
             finishByScore();
             return;
         }
+        if (reachedArrowCap() && finishByCountback()) return;
         armTurnTimer();
     }
 
@@ -212,6 +220,33 @@ public class ArcheryRoom {
         if (host.getShots().size() != guest.getShots().size()) return false;
 
         return host.total() != guest.total();
+    }
+
+    private boolean reachedArrowCap() {
+        return host.getShots().size() >= MAX_ARROWS
+                && host.getShots().size() == guest.getShots().size();
+    }
+
+    /**
+     * 실제 양궁 동점 규칙으로 가른다. 10점을 많이 쏜 쪽, 같으면 9점… 순이다.
+     *
+     * 발마다 점수 분포까지 완전히 같으면 가를 방법이 없다. 그때는 그대로
+     * 이어간다 — 턴 제한이 있어 대결이 멈추지는 않는다.
+     */
+    private boolean finishByCountback() {
+        for (int value = MAX_SCORE_PER_ARROW; value >= 1; value -= 1) {
+            long hostCount = countOf(host, value);
+            long guestCount = countOf(guest, value);
+            if (hostCount != guestCount) {
+                finish(hostCount > guestCount ? host : guest, EndReason.SCORE);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private long countOf(ArcherySeat seat, int value) {
+        return seat.getShots().stream().filter(score -> score == value).count();
     }
 
     private void finishByScore() {

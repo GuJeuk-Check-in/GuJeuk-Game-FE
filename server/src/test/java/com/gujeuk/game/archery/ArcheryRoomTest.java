@@ -274,6 +274,30 @@ class ArcheryRoomTest {
     }
 
     @Test
+    void 발수를_다_채우고도_동점이면_10점을_많이_쏜_쪽이_이긴다() {
+        // 앞 5발은 총점이 같고 구성만 다르게, 나머지는 양쪽 똑같이 쏜다.
+        // 그래야 발수가 같아지는 매 시점에 총점이 같아 서든데스가 이어진다.
+        int[] hostFive = {10, 10, 10, 0, 0};
+        int[] guestFive = {6, 6, 6, 6, 6};
+        int h = 0;
+        int g = 0;
+
+        while (room.getState() == ArcheryRoomState.PLAYING) {
+            ArcherySeat seat = whoseTurn();
+            int score = seat == host()
+                    ? (h < hostFive.length ? hostFive[h++] : 5)
+                    : (g < guestFive.length ? guestFive[g++] : 5);
+            room.shoot(seat, 0.7, 0.8, score);
+        }
+
+        assertThat(host().total()).isEqualTo(guest().total());
+        assertThat(host().getShots()).hasSize(15);
+        // 총점은 같지만 10점을 세 발 더 쏜 host가 이긴다.
+        assertThat(listener.finishedWinner).isEqualTo(1L);
+        assertThat(listener.finishedReason).isEqualTo(EndReason.SCORE);
+    }
+
+    @Test
     void 기권하면_상대가_이긴다() {
         room.resign(host());
 
