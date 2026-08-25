@@ -44,6 +44,16 @@ const RING_LINE = 'rgba(0, 0, 0, 0.28)'
 
 const MAX_PULL = 150
 /**
+ * 조준으로 인정하는 최소 드래그 거리(월드 px).
+ *
+ * 당김 벡터를 누른 지점이 아니라 궁수 기준으로 재기 때문에, 이 문턱이 없으면
+ * 캔버스 아무 데나 한 번 탭한 것이 곧 만개 조준이 된다. 과녁 쪽을 탭하면
+ * 최대 세기로 뒤를 향해 쏴서 화살 한 발이 0점으로 사라진다.
+ */
+const MIN_DRAG = 12
+/** 쏠 수 있는 최대 각도. 이보다 위나 뒤로 조준하면 발사하지 않는다. */
+const MAX_ANGLE = (85 * Math.PI) / 180
+/**
  * 최대로 당겼을 때의 화살 초기 속도(스텝당 이동 픽셀).
  *
  * 실측으로 정했다. 이 값이 게임의 성격을 거의 결정한다.
@@ -143,6 +153,8 @@ export class ArcheryGame {
 
   private aiming = false
   private aimPoint: PointerPoint | null = null
+  /** 포인터를 누른 지점. 여기서 얼마나 끌었는지로 탭과 조준을 가른다. */
+  private downPoint: PointerPoint | null = null
 
   constructor(options: ArcheryGameOptions) {
     this.stage = options.stage
@@ -195,6 +207,7 @@ export class ArcheryGame {
     this.armed = false
     this.aiming = false
     this.aimPoint = null
+    this.downPoint = null
     this.emit()
   }
 
@@ -296,31 +309,48 @@ export class ArcheryGame {
 
   private handleDown(point: PointerPoint): void {
     if (!this.armed || this.arrow !== null) return
-    this.aiming = true
-    this.aimPoint = this.toWorld(point)
+    // 누른 지점만 기억한다. 여기서 바로 조준을 켜면 탭 한 번이 곧 발사가 된다.
+    this.downPoint = this.toWorld(point)
+    this.aiming = false
+    this.aimPoint = null
     this.emit()
   }
 
   private handleMove(point: PointerPoint): void {
-    if (!this.aiming) return
-    this.aimPoint = this.toWorld(point)
+    const down = this.downPoint
+    if (!down) return
+
+    const world = this.toWorld(point)
+    // 누른 자리에서 충분히 끌어야 조준이 시작된다.
+    if (!this.aiming && Math.hypot(world.x - down.x, world.y - down.y) < MIN_DRAG) return
+
+    this.aiming = true
+    this.aimPoint = world
     this.emit()
   }
 
   private handleUp(): void {
     const aim = this.aimPoint
-    this.aiming = false
+    const wasAiming = this.aiming
 
-    if (!aim || !this.armed) {
-      this.aimPoint = null
+    this.aiming = false
+    this.aimPoint = null
+    this.downPoint = null
+
+    if (!wasAiming || !aim || !this.armed) {
       this.emit()
       return
     }
 
     const pulled = this.pullVector(aim)
-    this.aimPoint = null
+    if (pulled.distance < MIN_DRAG) {
+      this.emit()
+      return
+    }
 
-    if (pulled.distance < 10) {
+    const angle = Math.atan2(-pulled.dy, pulled.dx)
+    // 뒤나 아래로 조준한 것은 실수다. 쏘면 화살만 버리므로 차례를 유지한다.
+    if (angle < 0 || angle > MAX_ANGLE) {
       this.emit()
       return
     }
@@ -328,7 +358,7 @@ export class ArcheryGame {
     this.armed = false
     this.launch(
       {
-        angle: Math.atan2(-pulled.dy, pulled.dx),
+        angle,
         power: clamp(pulled.distance, 0, MAX_PULL) / MAX_PULL,
         wind: this.wind,
       },
