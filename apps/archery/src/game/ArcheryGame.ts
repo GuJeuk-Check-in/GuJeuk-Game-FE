@@ -37,6 +37,8 @@ const TARGET_HALF_W = 16
  */
 const RING_STEP = 10
 const RING_COUNT = 10
+/** 가장 바깥 링의 반지름. 이 밖으로 지나가면 과녁을 넘긴 것이다. */
+const RING_OUTER = RING_STEP * RING_COUNT
 /** 점수 구간 두 개가 색 하나를 공유한다. 안쪽(10·9)부터. */
 const RING_COLORS = ['#f5cf3d', '#e8474b', '#4d8dff', '#23262e', '#edeff5'] as const
 /** 흰색·금색 링 위에 그리는 경계선. 색이 옅어 경계가 안 보인다. */
@@ -98,9 +100,10 @@ export interface ShotInput {
 export interface ShotResult {
   /** 0~10. 빗나가면 0. */
   score: number
-  /** 과녁 평면에 닿은 높이. 못 닿았으면 null. */
+  /** 과녁 평면을 지난 높이. 평면까지 못 갔으면 null. */
   hitY: number | null
-  outcome: 'target' | 'ground' | 'out'
+  /** over는 평면을 지나긴 했지만 링 바깥이었다는 뜻 — 넘긴 발이다. */
+  outcome: 'target' | 'over' | 'ground' | 'out'
 }
 
 export interface ArcherySnapshot {
@@ -258,7 +261,10 @@ export class ArcheryGame {
 
     const { x, y } = arrow.position
     if (x >= TARGET_X - TARGET_HALF_W) {
-      this.land(y, 'target')
+      // 평면을 지났다고 다 맞은 게 아니다. 이 조건은 x만 보므로 과녁 한참 위로
+      // 넘어간 화살도 여기로 온다. 링 안팎을 갈라두지 않으면 0점짜리 화살이
+      // 과녁 위 허공에 꽂힌 채 남는다.
+      this.land(y, Math.abs(y - TARGET_Y) <= RING_OUTER ? 'target' : 'over')
     } else if (y >= GROUND_Y) {
       this.land(null, 'ground')
     } else if (x > WORLD_W + 100 || y > WORLD_H + 200) {
@@ -271,7 +277,8 @@ export class ArcheryGame {
     const arrow = this.arrow
     if (!input || !arrow) return
 
-    const score = hitY === null ? 0 : scoreFor(Math.abs(hitY - TARGET_Y))
+    // 링 안에 든 발만 점수가 있다. over/ground/out은 전부 0점이다.
+    const score = outcome === 'target' && hitY !== null ? scoreFor(Math.abs(hitY - TARGET_Y)) : 0
 
     if (outcome === 'target' && hitY !== null) {
       this.stuck.push({
@@ -443,7 +450,6 @@ export class ArcheryGame {
   private drawTarget(ctx: CanvasRenderingContext2D): void {
     // 받침대
     ctx.fillStyle = '#6f5836'
-    const outer = RING_STEP * RING_COUNT
     ctx.fillRect(TARGET_X + TARGET_HALF_W - 4, TARGET_Y, 8, GROUND_Y - TARGET_Y)
 
     // 바깥 링부터 안쪽으로 덮어 그린다.
@@ -464,8 +470,6 @@ export class ArcheryGame {
         ctx.stroke()
       }
     }
-
-    void outer
   }
 
   private drawStuckArrows(ctx: CanvasRenderingContext2D): void {
