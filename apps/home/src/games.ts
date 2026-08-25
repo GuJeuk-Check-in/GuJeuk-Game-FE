@@ -1,8 +1,13 @@
+import type { IconName } from '@gujuck/ui'
+
 export interface GameLink {
   id: string
   name: string
   description: string
-  emoji: string
+  /** 카드 아이콘. 이모지 대신 SVG를 쓴다 — 기기마다 모양이 달라지지 않는다. */
+  icon: IconName
+  /** 카드 강조색. 게임마다 달라야 목록에서 구분된다. */
+  accent: string
   url: string
   /** 아직 배포 전이면 카드가 비활성으로 보인다. */
   ready: boolean
@@ -19,20 +24,23 @@ const RAW: readonly Omit<GameLink, 'url' | 'ready'>[] = [
   {
     id: 'tic-tac-toe',
     name: '틱택토',
-    description: '세 칸을 먼저 잇는 사람이 이겨요',
-    emoji: '⭕',
+    description: '말은 3개까지, 넘치면 오래된 것부터 사라져요',
+    icon: 'users',
+    accent: '#4d8dff',
   },
   {
     id: 'alkkagi',
     name: '알까기',
     description: '상대 돌을 판 밖으로 밀어내세요',
-    emoji: '⚫',
+    icon: 'target',
+    accent: '#f2b03d',
   },
   {
     id: 'archery',
     name: '양궁',
     description: '바람을 읽고 과녁 정중앙을 노려요',
-    emoji: '🏹',
+    icon: 'arrow',
+    accent: '#f5cf3d',
   },
 ]
 

@@ -1,5 +1,6 @@
 package com.gujeuk.game.global.config;
 
+import com.gujeuk.game.archery.ws.ArcheryWebSocketHandler;
 import com.gujeuk.game.match.ws.GameWebSocketHandler;
 import com.gujeuk.game.tictactoe.ws.TicTacToeWebSocketHandler;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,7 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 public class WebSocketConfig implements WebSocketConfigurer {
     private final GameWebSocketHandler alkkagiHandler;
     private final TicTacToeWebSocketHandler ticTacToeHandler;
+    private final ArcheryWebSocketHandler archeryHandler;
 
     /**
      * 게임마다 경로를 나눈다.
@@ -27,5 +29,6 @@ public class WebSocketConfig implements WebSocketConfigurer {
         // CORS 필터를 타지 않는다. 개발 편의를 위해 열어두고, 인증은 토큰으로 한다.
         registry.addHandler(alkkagiHandler, "/ws/game").setAllowedOriginPatterns("*");
         registry.addHandler(ticTacToeHandler, "/ws/tic-tac-toe").setAllowedOriginPatterns("*");
+        registry.addHandler(archeryHandler, "/ws/archery").setAllowedOriginPatterns("*");
     }
 }

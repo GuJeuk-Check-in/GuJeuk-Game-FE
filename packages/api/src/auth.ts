@@ -6,7 +6,7 @@ import type { ApiClient } from './client'
  * 게임마다 실력의 의미가 다르므로 레이팅도 게임별로 따로 쌓인다. 알까기를
  * 잘한다고 틱택토를 잘하는 게 아니다.
  */
-export type GameName = 'ALKKAGI' | 'TIC_TAC_TOE'
+export type GameName = 'ALKKAGI' | 'TIC_TAC_TOE' | 'ARCHERY'
 
 export interface Profile {
   nickname: string

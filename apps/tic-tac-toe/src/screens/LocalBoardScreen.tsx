@@ -1,4 +1,4 @@
-import { GameShell, ResultOverlay } from '@gujuck/ui'
+import { GameShell, Icon, ResultOverlay } from '@gujuck/ui'
 import { Board } from '../components/Board'
 import { MARKS_PER_PLAYER } from '../game/rules'
 import { AI, HUMAN, useGame } from '../game/useGame'
@@ -24,8 +24,20 @@ export function LocalBoardScreen({ onExit }: Props) {
         <div className="ttt-header">
           <div className="ttt-title">연습</div>
           <div className="ttt-modes">
-            <ModeButton current={mode} value="solo" label="AI" onSelect={game.changeMode} />
-            <ModeButton current={mode} value="duo" label="2인" onSelect={game.changeMode} />
+            <ModeButton
+              current={mode}
+              value="solo"
+              label="AI"
+              icon="bot"
+              onSelect={game.changeMode}
+            />
+            <ModeButton
+              current={mode}
+              value="duo"
+              label="2인"
+              icon="users"
+              onSelect={game.changeMode}
+            />
             <button className="gj-btn ttt-btn--sm" onClick={onExit}>
               나가기
             </button>
@@ -52,6 +64,8 @@ export function LocalBoardScreen({ onExit }: Props) {
       <ResultOverlay
         open={finished}
         title={resultTitle(mode, outcome.winner)}
+        icon={mode === 'solo' && outcome.winner === AI ? 'bot' : 'trophy'}
+        tone={mode === 'solo' && outcome.winner === AI ? 'muted' : 'accent'}
         description="세 칸을 먼저 이었어요."
         primaryLabel="다시 하기"
         onPrimary={game.reset}
@@ -66,16 +80,19 @@ interface ModeButtonProps {
   current: Mode
   value: Mode
   label: string
+  icon: 'bot' | 'users'
   onSelect: (mode: Mode) => void
 }
 
-function ModeButton({ current, value, label, onSelect }: ModeButtonProps) {
+function ModeButton({ current, value, label, icon, onSelect }: ModeButtonProps) {
   return (
     <button
       type="button"
       className={`gj-btn ttt-mode ${current === value ? 'is-on' : ''}`}
       onClick={() => onSelect(value)}
+      aria-pressed={current === value}
     >
+      <Icon name={icon} size={15} />
       {label}
     </button>
   )
@@ -88,6 +105,6 @@ function statusText(mode: Mode, turn: Mark, winner: Mark | null): string {
 }
 
 function resultTitle(mode: Mode, winner: Mark | null): string {
-  if (mode === 'solo') return winner === AI ? '졌어요 😢' : '이겼어요! 🎉'
-  return `${winner} 승리! 🎉`
+  if (mode === 'solo') return winner === AI ? '졌어요' : '이겼어요!'
+  return `${winner} 승리!`
 }

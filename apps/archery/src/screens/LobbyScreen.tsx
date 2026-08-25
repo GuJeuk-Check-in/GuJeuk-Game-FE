@@ -2,11 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import type { RankingEntry } from '@gujuck/api'
 import { GameShell, Icon } from '@gujuck/ui'
 import { authApi } from '../api'
+import { OfflineBar } from '../components/OfflineBar'
 import type { OnlineProfile } from '../useMatch'
 
 interface Props {
   profile: OnlineProfile | null
   notice: string
+  connected: boolean
+  onRetry: () => void
   onCreateRoom: () => void
   onJoinRoom: (code: string) => void
   onPlayLocal: () => void
@@ -16,6 +19,8 @@ interface Props {
 export function LobbyScreen({
   profile,
   notice,
+  connected,
+  onRetry,
   onCreateRoom,
   onJoinRoom,
   onPlayLocal,
@@ -26,7 +31,7 @@ export function LobbyScreen({
 
   const loadRanking = useCallback(() => {
     authApi
-      .ranking('TIC_TAC_TOE')
+      .ranking('ARCHERY')
       // 랭킹은 부가 정보다. 못 불러와도 방은 만들 수 있어야 하므로 조용히 넘긴다.
       .then(setRanking)
       .catch(() => setRanking([]))
@@ -37,27 +42,28 @@ export function LobbyScreen({
   return (
     <GameShell
       header={
-        <div className="ttt-lobby__head">
+        <div className="ar-lobby__head">
           <div>
-            <div className="ttt-lobby__name">{profile?.nickname ?? '게스트'}</div>
-            <div className="ttt-lobby__rating">레이팅 {profile?.rating ?? '-'}</div>
+            <div className="ar-lobby__name">{profile?.nickname ?? '게스트'}</div>
+            <div className="ar-lobby__rating">레이팅 {profile?.rating ?? '-'}</div>
           </div>
-          <button className="gj-btn ttt-btn--sm" onClick={onLogout}>
+          <button className="gj-btn ar-btn--sm" onClick={onLogout}>
             <Icon name="logout" size={15} />
             로그아웃
           </button>
         </div>
       }
     >
-      <div className="ttt-lobby">
-        {notice && <p className="ttt-notice">{notice}</p>}
+      <div className="ar-lobby">
+        {!connected && <OfflineBar onRetry={onRetry} />}
+        {notice && <p className="ar-notice">{notice}</p>}
 
-        <button className="gj-btn gj-btn--primary" onClick={onCreateRoom}>
+        <button className="gj-btn gj-btn--primary" onClick={onCreateRoom} disabled={!connected}>
           <Icon name="plus" size={17} />방 만들기
         </button>
 
         <form
-          className="ttt-join"
+          className="ar-join"
           onSubmit={(event) => {
             event.preventDefault()
             const trimmed = code.trim()
@@ -77,24 +83,24 @@ export function LobbyScreen({
         </form>
 
         <button className="gj-btn gj-btn--ghost" onClick={onPlayLocal}>
-          <Icon name="bot" size={16} />
-          AI와 연습
+          <Icon name="target" size={16} />
+          혼자 쏘기
         </button>
 
-        <div className="ttt-rank__title">
+        <div className="ar-rank__title">
           <Icon name="trophy" size={15} />
           랭킹
         </div>
         {ranking.length === 0 ? (
-          <p className="ttt-rank__empty">아직 기록이 없어요. 첫 승자가 되어보세요.</p>
+          <p className="ar-rank__empty">아직 기록이 없어요. 첫 승자가 되어보세요.</p>
         ) : (
-          <ol className="ttt-rank">
+          <ol className="ar-rank">
             {ranking.map((entry) => (
-              <li key={entry.rank} className="ttt-rank__row">
-                <span className="ttt-rank__no">{entry.rank}</span>
-                <span className="ttt-rank__name">{entry.nickname}</span>
-                <span className="ttt-rank__score">{entry.rating}</span>
-                <span className="ttt-rank__wl">
+              <li key={entry.rank} className="ar-rank__row">
+                <span className="ar-rank__no">{entry.rank}</span>
+                <span className="ar-rank__name">{entry.nickname}</span>
+                <span className="ar-rank__score">{entry.rating}</span>
+                <span className="ar-rank__wl">
                   {entry.wins}승 {entry.losses}패
                 </span>
               </li>

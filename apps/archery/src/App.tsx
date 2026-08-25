@@ -1,78 +1,66 @@
-import { useCallback, useRef, useState } from 'react'
-import { GameCanvas, GameShell, ResultOverlay } from '@gujuck/ui'
-import type { CanvasStage } from '@gujuck/game-core'
-import { ArcheryGame } from './game/ArcheryGame'
-import type { ArcherySnapshot } from './game/ArcheryGame'
+import { useState } from 'react'
+import { GameShell } from '@gujuck/ui'
+import { AuthScreen } from './screens/AuthScreen'
+import { LobbyScreen } from './screens/LobbyScreen'
+import { LocalBoardScreen } from './screens/LocalBoardScreen'
+import { OnlineBoardScreen } from './screens/OnlineBoardScreen'
+import { OfflineBar } from './components/OfflineBar'
+import { useMatch } from './useMatch'
 import './App.css'
 
-const INITIAL: ArcherySnapshot = {
-  score: 0,
-  arrowsLeft: 5,
-  wind: 0,
-  lastHit: null,
-  finished: false,
-}
-
+/**
+ * 화면 라우팅.
+ *
+ * 온라인 단계(auth/lobby/waiting/playing)는 useMatch가 서버 메시지에 따라
+ * 정한다. 혼자 쏘기는 서버와 무관하므로 그 위에 얹는 별도 상태로 둔다 —
+ * 로그인하지 않아도 들어갈 수 있어야 하기 때문이다.
+ */
 export default function App() {
-  const gameRef = useRef<ArcheryGame | null>(null)
-  const [snapshot, setSnapshot] = useState<ArcherySnapshot>(INITIAL)
+  const match = useMatch()
+  const [local, setLocal] = useState(false)
 
-  const handleMount = useCallback((stage: CanvasStage) => {
-    const game = new ArcheryGame({ stage, onChange: setSnapshot })
-    gameRef.current = game
-
-    return () => {
-      game.destroy()
-      gameRef.current = null
-    }
-  }, [])
-
-  const restart = () => {
-    gameRef.current?.reset()
+  if (local) {
+    return <LocalBoardScreen onExit={() => setLocal(false)} />
   }
 
-  return (
-    <GameShell
-      header={
-        <div className="ar-header">
-          <div className="ar-title">양궁</div>
-          <div className="ar-meta">
-            <span className="ar-chip">🏹 {snapshot.arrowsLeft}</span>
-            <span className="ar-chip">⭐ {snapshot.score}</span>
-            <span className="ar-chip">{windLabel(snapshot.wind)}</span>
-          </div>
-        </div>
-      }
-      footer={
-        <div className="ar-footer">
-          <div className="ar-status">
-            {snapshot.lastHit === null
-              ? '활을 뒤로 당겼다 놓으세요'
-              : snapshot.lastHit > 0
-                ? `명중! +${snapshot.lastHit}점`
-                : '빗나갔어요'}
-          </div>
-          <button type="button" className="gj-btn" onClick={restart}>
-            처음부터
-          </button>
-        </div>
-      }
-    >
-      <GameCanvas onMount={handleMount} />
+  if (match.phase === 'auth') {
+    return <AuthScreen onAuthenticated={match.authenticated} onPlayLocal={() => setLocal(true)} />
+  }
 
-      <ResultOverlay
-        open={snapshot.finished}
-        title={`${snapshot.score}점`}
-        description={`화살 ${INITIAL.arrowsLeft}발을 모두 쐈어요.`}
-        primaryLabel="다시 하기"
-        onPrimary={restart}
+  if (match.phase === 'lobby') {
+    return (
+      <LobbyScreen
+        profile={match.profile}
+        notice={match.notice}
+        connected={match.connected}
+        onRetry={match.retry}
+        onCreateRoom={match.createRoom}
+        onJoinRoom={match.joinRoom}
+        onPlayLocal={() => setLocal(true)}
+        onLogout={match.logout}
       />
-    </GameShell>
-  )
-}
+    )
+  }
 
-function windLabel(wind: number): string {
-  if (Math.abs(wind) < 0.05) return '무풍'
-  const arrow = wind > 0 ? '→' : '←'
-  return `${arrow} ${Math.abs(wind).toFixed(1)}`
+  if (match.phase === 'waiting') {
+    return (
+      <GameShell>
+        {!match.connected && <OfflineBar onRetry={match.retry} onExit={match.backToLobby} float />}
+        <div className="ar-center">
+          <div className="ar-card">
+            <h2 className="ar-card__title">방 코드</h2>
+            <div className="ar-code">{match.roomCode}</div>
+            <p className="ar-card__lead">상대에게 이 코드를 알려주세요.</p>
+            {/* 전에는 이 화면이 notice를 그리지 않아 서버 안내와 에러가 전부 사라졌다. */}
+            {match.notice && <p className="ar-notice">{match.notice}</p>}
+            <button className="gj-btn" onClick={match.backToLobby}>
+              취소
+            </button>
+          </div>
+        </div>
+      </GameShell>
+    )
+  }
+
+  return <OnlineBoardScreen match={match} onExit={match.backToLobby} />
 }

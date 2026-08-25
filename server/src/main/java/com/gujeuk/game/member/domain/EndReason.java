@@ -12,6 +12,8 @@ public enum EndReason {
     KNOCKOUT,
     /** 틱택토: 세 칸을 이었다. */
     LINE,
+    /** 양궁: 정해진 발수를 다 쏘고 총점이 갈렸다. */
+    SCORE,
     /** 기권 버튼을 눌렀다. */
     RESIGN,
     /** 재접속 유예를 넘겨 몰수패. */

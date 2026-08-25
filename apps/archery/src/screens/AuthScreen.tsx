@@ -6,7 +6,7 @@ import { authApi } from '../api'
 
 interface Props {
   onAuthenticated: (token: string) => void
-  /** 로그인 없이 AI와 연습하기. */
+  /** 로그인 없이 혼자 쏘기. */
   onPlayLocal: () => void
 }
 
@@ -36,14 +36,14 @@ export function AuthScreen({ onAuthenticated, onPlayLocal }: Props) {
 
   return (
     <GameShell>
-      <div className="ttt-center">
-        <form className="ttt-card" onSubmit={submit}>
-          <h1 className="ttt-card__title">틱택토</h1>
-          <p className="ttt-card__lead">
+      <div className="ar-center">
+        <form className="ar-card" onSubmit={submit}>
+          <h1 className="ar-card__title">양궁</h1>
+          <p className="ar-card__lead">
             {mode === 'login' ? '닉네임으로 로그인하세요.' : '닉네임과 비밀번호로 가입합니다.'}
           </p>
 
-          <label className="ttt-field">
+          <label className="ar-field">
             <span>닉네임</span>
             <input
               value={nickname}
@@ -54,7 +54,7 @@ export function AuthScreen({ onAuthenticated, onPlayLocal }: Props) {
             />
           </label>
 
-          <label className="ttt-field">
+          <label className="ar-field">
             <span>비밀번호</span>
             <input
               type="password"
@@ -65,7 +65,7 @@ export function AuthScreen({ onAuthenticated, onPlayLocal }: Props) {
             />
           </label>
 
-          {error && <p className="ttt-error">{error}</p>}
+          {error && <p className="ar-error">{error}</p>}
 
           <button className="gj-btn gj-btn--primary" type="submit" disabled={busy}>
             {busy ? '잠시만요…' : mode === 'login' ? '로그인' : '가입하고 시작'}
@@ -82,10 +82,10 @@ export function AuthScreen({ onAuthenticated, onPlayLocal }: Props) {
             {mode === 'login' ? '계정이 없어요' : '이미 계정이 있어요'}
           </button>
 
-          {/* 상대가 없어도 규칙을 익힐 수 있어야 한다. 로그인은 대전에만 필요하다. */}
+          {/* 상대가 없어도 감을 익힐 수 있어야 한다. 로그인은 대결에만 필요하다. */}
           <button className="gj-btn gj-btn--ghost" type="button" onClick={onPlayLocal}>
-            <Icon name="bot" size={16} />
-            로그인 없이 AI와 연습
+            <Icon name="target" size={16} />
+            로그인 없이 혼자 쏘기
           </button>
         </form>
       </div>

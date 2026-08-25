@@ -1,3 +1,17 @@
+/*
+ * 양궁 전용 스타일.
+ *
+ * 강조색만 과녁 금색으로 덮어쓰고 나머지 토큰은 @gujuck/ui를 그대로 쓴다.
+ * 게임마다 색이 다르면 어느 게임에 있는지 한눈에 알 수 있고, 셸·버튼·오버레이는
+ * 공용이라 손볼 곳이 한 군데로 유지된다.
+ *
+ * 금색은 배경 대비 12.16, 그 위 어두운 글자와는 11.8이라 둘 다 넉넉하다.
+ */
+:root {
+  --gj-accent: #f5cf3d;
+  --gj-accent-ink: #0f172a;
+}
+
 .ar-header {
   display: flex;
   align-items: center;
@@ -28,6 +42,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -35,4 +50,451 @@
   color: var(--gj-text-dim);
   font-size: 14px;
   font-weight: 600;
+}
+
+.ar-shots {
+  display: flex;
+  gap: 6px;
+}
+
+.ar-shot {
+  min-width: 26px;
+  padding: 3px 0;
+  text-align: center;
+  border-radius: 8px;
+  background: var(--gj-surface);
+  border: 1px solid var(--gj-border);
+  color: var(--gj-text-dim);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ar-shot.is-done {
+  background: var(--gj-accent);
+  border-color: var(--gj-accent);
+  color: var(--gj-accent-ink);
+}
+
+/* ---- 카드형 화면 (로그인 · 방 코드) -------------------------------------- */
+
+.ar-center {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.ar-card {
+  width: min(100%, 22rem);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  background: var(--gj-surface);
+  border: 1px solid var(--gj-border);
+  border-radius: 20px;
+  text-align: center;
+}
+
+.ar-card__title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.ar-card__lead {
+  margin: 0;
+  color: var(--gj-text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ar-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--gj-text-dim);
+}
+
+.ar-field input,
+.ar-join input {
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--gj-border);
+  background: #121826;
+  color: var(--gj-text);
+  /* iOS는 16px 미만 입력창에 포커스가 가면 화면을 확대한다. */
+  font-size: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ar-field input:focus,
+.ar-join input:focus {
+  outline: 2px solid var(--gj-accent);
+  outline-offset: 1px;
+}
+
+.ar-error {
+  margin: 0;
+  color: #ff7b7b;
+  font-size: 13px;
+}
+
+.ar-ghost {
+  background: transparent;
+  color: var(--gj-text-dim);
+}
+
+.ar-btn--sm {
+  padding: 7px 12px;
+  font-size: 13px;
+}
+
+.ar-code {
+  font-size: clamp(2rem, 12vw, 2.75rem);
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 로비 ---------------------------------------------------------------- */
+
+.ar-lobby {
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 16px 24px;
+  max-width: 26rem;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ar-lobby__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ar-lobby__name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ar-lobby__rating {
+  color: var(--gj-text-dim);
+  font-size: 13px;
+}
+
+.ar-join {
+  display: flex;
+  gap: 6px;
+}
+
+.ar-join input {
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+
+.ar-notice {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(77, 141, 255, 0.12);
+  color: var(--gj-accent);
+  font-size: 13px;
+}
+
+.ar-rank__title {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gj-text-dim);
+}
+
+.ar-rank__empty {
+  margin: 0;
+  color: var(--gj-text-dim);
+  font-size: 13px;
+}
+
+.ar-rank {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ar-rank__row {
+  display: grid;
+  grid-template-columns: 1.75rem 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--gj-surface);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.ar-rank__no {
+  color: var(--gj-text-dim);
+  text-align: center;
+}
+
+.ar-rank__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ar-rank__score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ar-rank__wl {
+  color: var(--gj-text-dim);
+  font-size: 0.85em;
+}
+
+/* ---- 온라인 대결 --------------------------------------------------------- */
+
+.ar-vs {
+  margin-left: 8px;
+  font-weight: 400;
+  font-size: 0.72em;
+  color: var(--gj-text-dim);
+}
+
+.ar-scoreline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ar-scorerow {
+  display: grid;
+  /* 이름은 남는 공간, 점수칸과 합계는 고정. */
+  grid-template-columns: 4.5rem 1fr 2.5rem;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--gj-text-dim);
+}
+
+.ar-scorerow.is-mine {
+  color: var(--gj-text);
+  font-weight: 700;
+}
+
+.ar-scorerow__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ar-scorerow__total {
+  text-align: right;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.ar-sudden {
+  margin-right: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e8604c;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.ar-wind {
+  margin-left: 8px;
+  color: var(--gj-accent);
+  font-weight: 700;
+}
+
+.ar-final {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.ar-delta {
+  margin-top: 2px;
+  font-weight: 700;
+  color: var(--gj-accent);
+}
+
+.ar-toast {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 10px;
+  z-index: 5;
+  max-width: min(90%, 26rem);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(8, 11, 18, 0.92);
+  border: 1px solid var(--gj-border);
+  font-size: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* ---- 연결 끊김 ------------------------------------------------------------ */
+
+.ar-offline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 14px;
+  background: var(--gj-surface);
+  border: 1px solid var(--gj-danger);
+}
+
+/* 캔버스 위에 띄울 때. 셸의 body가 relative라 그 기준으로 잡힌다. */
+.ar-offline--float {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 10px;
+  z-index: 6;
+  max-width: min(94%, 30rem);
+  background: rgba(8, 11, 18, 0.94);
+}
+
+.ar-offline__text {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gj-danger);
+}
+
+/* ---- 조작 도우미 ---------------------------------------------------------- */
+
+.ar-assist {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ar-assist__panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--gj-radius);
+  background: var(--gj-surface);
+  border: 1px solid var(--gj-border);
+}
+
+.ar-assist__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ar-assist__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gj-text-dim);
+}
+
+.ar-assist__value {
+  min-width: 3.2rem;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 차례 제한 시간 -------------------------------------------------------- */
+
+.ar-timer {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  /* 상대 차례에는 있다는 것만 알면 된다. */
+  opacity: 0.5;
+}
+
+.ar-timer.is-mine {
+  opacity: 1;
+}
+
+.ar-timer__track,
+.ar-timer__fill {
+  fill: none;
+  stroke-width: 3;
+}
+
+.ar-timer__track {
+  stroke: var(--gj-surface-2);
+}
+
+.ar-timer__fill {
+  stroke: var(--gj-accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 250ms linear;
+}
+
+.ar-timer.is-urgent .ar-timer__fill {
+  stroke: var(--gj-danger);
+}
+
+.ar-timer__num {
+  position: absolute;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ar-timer.is-urgent .ar-timer__num {
+  color: var(--gj-danger);
+}
+
+/* 남은 시간이 줄어드는 링은 시간 자체를 뜻한다. 움직임을 줄이는 설정에서도
+   숫자는 그대로 세지만, 링의 전환만 끈다. */
+@media (prefers-reduced-motion: reduce) {
+  .ar-timer__fill {
+    transition: none;
+  }
+}
+
+/* ---- 점수 숫자 ------------------------------------------------------------ */
+
+/*
+ * 압축 서체는 좁은 칸에 숫자를 넣을 때 유리하고, 점수판이라는 성격도 드러낸다.
+ * 한글이 없는 서체라 숫자가 쓰이는 곳에만 건다.
+ */
+.ar-shot,
+.ar-scorerow__total,
+.ar-code,
+.ar-final {
+  font-family: 'Barlow Condensed', system-ui, sans-serif;
+  letter-spacing: 0.02em;
+}
+
+/* 지금 쏠 차례인 칸. 어디까지 왔는지 눈으로 짚어준다. */
+.ar-shot.is-next {
+  border-color: var(--gj-accent);
+  color: var(--gj-accent);
 }
