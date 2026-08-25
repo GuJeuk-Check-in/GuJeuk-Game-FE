@@ -43,6 +43,30 @@ class ArcheryRoomTest {
         };
     }
 
+    /**
+     * nextDouble이 미리 정한 값을 차례로 돌려준다.
+     *
+     * 기존 fixedRandom은 nextDouble을 0.5로 고정해 바람이 항상 0이었다. 그래서
+     * 바람이 섞여 나가는 버그를 테스트가 통째로 못 보고 지나쳤다.
+     */
+    private static Random windSequence(boolean hostFirst, double... values) {
+        return new Random() {
+            private int index = 0;
+
+            @Override
+            public boolean nextBoolean() {
+                return hostFirst;
+            }
+
+            @Override
+            public double nextDouble() {
+                double value = values[Math.min(index, values.length - 1)];
+                index += 1;
+                return value;
+            }
+        };
+    }
+
     @BeforeEach
     void setUp() {
         listener = new FakeListener();
@@ -160,6 +184,50 @@ class ArcheryRoomTest {
     }
 
     @Test
+    void 라운드를_닫는_발은_쏜_바람과_다음_바람을_따로_보낸다() {
+        // nextDouble 1.0 → 바람 +1.0, 0.0 → 바람 -1.0
+        FakeListener fake = new FakeListener();
+        ArcheryRoom room = new ArcheryRoom("CODE02", fake, windSequence(true, 1.0, 0.0));
+        room.open(1L, "host", 1200, null);
+        room.join(2L, "guest", 1200, null);
+
+        // 1라운드를 연다. 아직 바람이 바뀌지 않았으므로 두 값이 같아야 한다.
+        room.shoot(room.getHost(), 0.7, 0.8, 9);
+        Map<String, Object> opening = fake.lastShotOf(room.getGuest());
+        assertThat(opening.get("shotWind")).isEqualTo(1.0);
+        assertThat(opening.get("wind")).isEqualTo(1.0);
+
+        // 라운드를 닫는 발. 서버가 다음 바람을 새로 뽑으므로 두 값이 갈린다.
+        room.shoot(room.getGuest(), 0.7, 0.8, 9);
+        Map<String, Object> closing = fake.lastShotOf(room.getHost());
+
+        // 상대 화면이 이 화살을 재생할 때 쓰는 값
+        assertThat(closing.get("shotWind")).isEqualTo(1.0);
+        // 다음 발에 불 바람. 같은 키를 쓰면 위 값이 이걸로 덮여 궤적이 어긋난다.
+        assertThat(closing.get("wind")).isEqualTo(-1.0);
+    }
+
+    @Test
+    void 유예_안에_안_돌아오면_몰수패다() {
+        room.disconnect(host());
+        listener.runScheduled();
+
+        assertThat(room.getState()).isEqualTo(ArcheryRoomState.FINISHED);
+        assertThat(listener.finishedWinner).isEqualTo(2L);
+        assertThat(listener.finishedReason).isEqualTo(EndReason.DISCONNECT);
+    }
+
+    @Test
+    void 유예_안에_돌아오면_몰수가_취소된다() {
+        room.disconnect(host());
+
+        assertThat(room.reconnect(1L, null)).isTrue();
+        listener.runScheduled();
+
+        assertThat(room.getState()).isEqualTo(ArcheryRoomState.PLAYING);
+    }
+
+    @Test
     void 기권하면_상대가_이긴다() {
         room.resign(host());
 
@@ -171,6 +239,7 @@ class ArcheryRoomTest {
     /** 소켓도 DB도 없이 방을 돌리기 위한 가짜 통로. */
     private static final class FakeListener implements ArcheryRoomListener {
         private final Map<ArcherySeat, List<Map<String, Object>>> sent = new LinkedHashMap<>();
+        private final List<Runnable> scheduled = new ArrayList<>();
         private Long finishedWinner;
         private EndReason finishedReason;
         private Boolean lastSuddenDeath;
@@ -182,6 +251,24 @@ class ArcheryRoomTest {
             if (message.containsKey("suddenDeath")) {
                 lastSuddenDeath = (Boolean) message.get("suddenDeath");
             }
+        }
+
+        /** 이 자리가 마지막으로 받은 SHOT 메시지. */
+        Map<String, Object> lastShotOf(ArcherySeat seat) {
+            List<Map<String, Object>> messages = sent.get(seat);
+            if (messages == null) return Map.of();
+
+            for (int i = messages.size() - 1; i >= 0; i -= 1) {
+                if ("SHOT".equals(messages.get(i).get("type"))) return messages.get(i);
+            }
+            return Map.of();
+        }
+
+        /** 예약된 작업을 전부 실행한다. 유예 타이머를 앞당기는 것과 같다. */
+        void runScheduled() {
+            List<Runnable> due = new ArrayList<>(scheduled);
+            scheduled.clear();
+            due.forEach(Runnable::run);
         }
 
         Boolean lastTurnOf(ArcherySeat seat) {
@@ -208,8 +295,8 @@ class ArcheryRoomTest {
 
         @Override
         public Cancellable schedule(Runnable task, int delaySec) {
-            return () -> {
-            };
+            scheduled.add(task);
+            return () -> scheduled.remove(task);
         }
     }
 }
