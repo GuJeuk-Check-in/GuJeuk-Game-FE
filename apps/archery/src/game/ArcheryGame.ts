@@ -288,6 +288,8 @@ export interface ArcherySnapshot {
   pull: number
   /** 지금 조준 중인 각도(도). 당기고 있지 않으면 null. */
   angleDeg: number | null
+  /** 화살이 날거나 착탄을 보여주는 중. 결과창은 이게 끝난 뒤에 띄운다. */
+  busy: boolean
 }
 
 export interface ArcheryGameOptions {
@@ -340,6 +342,10 @@ export class ArcheryGame {
   private camera: Camera = FULL_VIEW
   /** 착탄 뒤 과녁을 보여주고 있는 남은 스텝. */
   private impactHold = 0
+  /** 방금 꽂힌 발. 착탄 표시에 쓴다. */
+  private impact: { score: number; y: number; by: Shooter } | null = null
+  /** 루프가 멈춰 있어도 착탄 표시를 끝내는 안전망. */
+  private holdTimer: ReturnType<typeof setTimeout> | null = null
 
   private aiming = false
   /** 누른 지점과 지금 끌고 있는 지점. 둘 다 화면 좌표다. */
@@ -372,6 +378,7 @@ export class ArcheryGame {
 
   destroy(): void {
     this.clearArrow()
+    this.clearHoldTimer()
     this.loop.destroy()
     this.input.destroy()
     Composite.clear(this.engine.world, false)
@@ -398,6 +405,8 @@ export class ArcheryGame {
     this.clearArrow()
     this.stuck = []
     this.impactHold = 0
+    this.impact = null
+    this.clearHoldTimer()
     this.camera = aimCamera(this.stage)
     this.armed = false
     this.aiming = false
@@ -459,7 +468,13 @@ export class ArcheryGame {
    * 멈추는 느낌이 자연스럽다. 물리와 무관하므로 결정성에는 영향이 없다.
    */
   private tickCamera(): void {
-    if (this.impactHold > 0) this.impactHold -= 1
+    if (this.impactHold > 0) {
+      this.impactHold -= 1
+      if (this.impactHold === 0) this.clearHoldTimer()
+      // 착탄 표시가 끝나는 순간을 알린다. 결과창이 이걸 기다리고 있어서,
+      // 여기서 알리지 않으면 busy가 true로 굳어 영영 안 뜬다.
+      if (this.impactHold === 0) this.emit()
+    }
 
     const want = this.desiredCamera()
     const now = this.camera
@@ -502,12 +517,40 @@ export class ArcheryGame {
     // 과녁까지 간 발은 어디에 꽂혔는지 잠깐 보여준다. 땅에 떨어졌으면 볼 게 없다.
     if (result.outcome === 'target' || result.outcome === 'over') {
       this.impactHold = IMPACT_HOLD_STEPS
+      this.impact = { score: result.score, y: result.hitY ?? TARGET_Y, by: this.arrowBy }
+    } else {
+      this.impact = null
     }
+
+    // 맞은 순간은 눈보다 손이 먼저 안다. 내가 쏜 발에만 준다 — 상대 발마다
+    // 울리면 성가시다.
+    if (this.arrowBy === 'me') buzz(result.score)
 
     const by = this.arrowBy
     this.clearArrow()
+
+    // 착탄 표시는 루프가 스텝을 세어 끝낸다. 그런데 탭이 숨어 루프가 멈춰 있으면
+    // 영영 끝나지 않아 결과창이 안 뜬다. 발사 착탄과 같은 이유로 안전망을 둔다.
+    if (this.impactHold > 0) {
+      this.clearHoldTimer()
+      this.holdTimer = setTimeout(
+        () => {
+          if (this.impactHold <= 0) return
+          this.impactHold = 0
+          this.emit()
+        },
+        IMPACT_HOLD_STEPS * STEP_SEC * 1000 + 500,
+      )
+    }
+
     this.emit()
     this.onShotLanded(input, result, by)
+  }
+
+  private clearHoldTimer(): void {
+    if (this.holdTimer === null) return
+    clearTimeout(this.holdTimer)
+    this.holdTimer = null
   }
 
   private clearArrow(): void {
@@ -531,6 +574,7 @@ export class ArcheryGame {
       flying: this.arrow !== null,
       pull: aim?.power ?? 0,
       angleDeg: aim ? (aim.angle * 180) / Math.PI : null,
+      busy: this.arrow !== null || this.impactHold > 0,
     })
   }
 
@@ -632,6 +676,7 @@ export class ArcheryGame {
     this.drawTrail(ctx)
     this.drawArrow(ctx)
     this.drawAim(ctx)
+    this.drawImpact(ctx)
 
     ctx.restore()
   }
@@ -814,6 +859,52 @@ export class ArcheryGame {
   }
 
   /**
+   * 방금 몇 점인지.
+   *
+   * 전에는 착탄 순간 화면에 아무 표시가 없어서, 하단 숫자칸을 다시 찾아봐야
+   * 몇 점인지 알 수 있었다. 맞은 자리에 바로 띄운다. 세계 좌표에 그리므로
+   * 확대창 안에도 같이 나온다.
+   */
+  private drawImpact(ctx: CanvasRenderingContext2D): void {
+    const hit = this.impact
+    if (!hit || this.impactHold <= 0) return
+
+    // 끝날 때쯤 옅어진다. 갑자기 사라지면 놓친 것처럼 보인다.
+    const fade = clamp(this.impactHold / (IMPACT_HOLD_STEPS * 0.4), 0, 1)
+    ctx.save()
+    ctx.globalAlpha = fade
+
+    // 맞은 링을 한 번 둘러준다. 숫자보다 먼저 눈에 들어온다.
+    const ring = Math.ceil(Math.abs(hit.y - TARGET_Y) / RING_STEP)
+    if (ring >= 1 && ring <= RING_COUNT) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.ellipse(TARGET_X, TARGET_Y, TARGET_HALF_W, RING_STEP * ring, 0, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+
+    // 점수. 과녁 왼쪽에 띄워 화살을 가리지 않는다.
+    const x = TARGET_X - 62
+    const y = hit.y
+    ctx.fillStyle = hit.score === 0 ? 'rgba(232, 71, 75, 0.92)' : 'rgba(12, 16, 24, 0.86)'
+    roundedRect(ctx, x - 30, y - 19, 60, 38, 10)
+    ctx.fill()
+    ctx.strokeStyle = hit.score === 10 ? '#f5cf3d' : 'rgba(255, 255, 255, 0.35)'
+    ctx.lineWidth = 2
+    ctx.stroke()
+
+    ctx.fillStyle = hit.score === 0 ? '#fff' : hit.score === 10 ? '#f5cf3d' : '#e9edf5'
+    ctx.font = '800 25px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(hit.score === 0 ? 'MISS' : String(hit.score), x, y + 1)
+    ctx.textBaseline = 'alphabetic'
+
+    ctx.restore()
+  }
+
+  /**
    * 과녁 확대 조준경.
    *
    * 사거리 전체를 담으면 과녁이 작아지고, 과녁을 크게 잡으면 어디를 겨누는지
@@ -904,6 +995,39 @@ export class ArcheryGame {
 
     ctx.restore()
   }
+}
+
+/**
+ * 모서리가 둥근 사각형 경로.
+ *
+ * ctx.roundRect는 비교적 최근에 들어왔다. 스마트 TV 내장 브라우저까지 보면
+ * 없는 곳이 있어서, 없으면 각진 사각형으로 떨어뜨린다.
+ */
+function roundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
+  ctx.beginPath()
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, r)
+    return
+  }
+  ctx.rect(x, y, w, h)
+}
+
+/**
+ * 착탄 진동.
+ *
+ * 정곡은 조금 길게 울려 다른 점수와 구분되게 한다. 지원하지 않는 기기에서는
+ * 조용히 넘어간다.
+ */
+function buzz(score: number): void {
+  if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return
+  navigator.vibrate(score === 10 ? [12, 40, 22] : score === 0 ? 6 : 10)
 }
 
 /** 화살 하나를 세계에 넣는다. 화면용과 미리 돌려보는 쪽이 같아야 한다. */

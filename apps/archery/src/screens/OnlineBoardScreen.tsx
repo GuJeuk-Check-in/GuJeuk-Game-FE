@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { GameCanvas, GameShell, Icon, ResultOverlay } from '@gujuck/ui'
 import type { CanvasStage } from '@gujuck/game-core'
 import { ArcheryGame } from '../game/ArcheryGame'
@@ -19,14 +19,16 @@ interface Props {
 
 export function OnlineBoardScreen({ match, onExit }: Props) {
   const { board, result, notice, opponent, profile, connected } = match
+  /** 화살이 날거나 착탄을 보여주는 중. 결과창을 그 뒤로 미룬다. */
+  const [busy, setBusy] = useState(false)
 
   const handleMount = useCallback(
     (stage: CanvasStage) => {
       const game = new ArcheryGame({
         stage,
         onShotLanded: match.handleShotLanded,
-        // 조준 중 상태는 온라인에서 따로 쓰지 않는다. 차례 표시는 서버 값을 쓴다.
-        onChange: () => {},
+        // 차례 표시는 서버 값을 쓴다. 여기서는 결과창을 언제 띄울지만 본다.
+        onChange: (snapshot) => setBusy(snapshot.busy),
       })
       match.attachGame(game)
 
@@ -101,7 +103,8 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
       <GameCanvas onMount={handleMount} />
 
       <ResultOverlay
-        open={Boolean(result)}
+        // 승부를 가른 마지막 화살을 보고 나서 띄운다.
+        open={Boolean(result) && !busy}
         title={result?.won ? '이겼어요!' : '졌어요'}
         icon={result?.won ? 'trophy' : 'target'}
         tone={result?.won ? 'accent' : 'muted'}

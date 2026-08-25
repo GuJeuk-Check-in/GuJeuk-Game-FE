@@ -76,7 +76,8 @@ export function LocalBoardScreen({ onExit }: Props) {
       <GameCanvas onMount={handleMount} />
 
       <ResultOverlay
-        open={round.finished}
+        // 마지막 화살이 꽂히는 것을 보고 나서 띄운다.
+        open={round.finished && !round.snapshot.busy}
         title={`${round.total}점`}
         icon="target"
         description={`${ARROWS_PER_ROUND}발 만점은 ${ARROWS_PER_ROUND * 10}점이에요.`}
