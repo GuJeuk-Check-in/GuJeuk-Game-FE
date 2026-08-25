@@ -5,6 +5,7 @@ import type { ArcheryGame } from '../game/ArcheryGame'
 /** 각도는 0~85도, 세기는 5~100%. 버튼 한 번에 이만큼 움직인다. */
 const ANGLE_STEP = 5
 const POWER_STEP = 5
+const MIN_ANGLE_DEG = 35
 const MAX_ANGLE_DEG = 85
 
 interface Props {
@@ -26,7 +27,7 @@ interface Props {
 export function AimAssist({ game, canShoot }: Props) {
   const [open, setOpen] = useState(false)
   const [angle, setAngle] = useState(45)
-  const [power, setPower] = useState(85)
+  const [power, setPower] = useState(75)
 
   // 열려 있는 동안에만 캔버스에 미리 보여준다. 닫으면 조준선을 거둔다.
   useEffect(() => {
@@ -53,7 +54,7 @@ export function AimAssist({ game, canShoot }: Props) {
             <button
               type="button"
               className="gj-btn ar-btn--sm"
-              onClick={() => setAngle((v) => Math.max(0, v - ANGLE_STEP))}
+              onClick={() => setAngle((v) => Math.max(MIN_ANGLE_DEG, v - ANGLE_STEP))}
               aria-label={`각도 ${ANGLE_STEP}도 낮추기`}
             >
               −
