@@ -12,5 +12,6 @@ package com.gujeuk.game.member.domain;
  */
 public enum GameType {
     ALKKAGI,
-    TIC_TAC_TOE
+    TIC_TAC_TOE,
+    ARCHERY
 }

@@ -1,82 +1,60 @@
-import { useCallback, useRef } from 'react'
-import { GameCanvas, GameShell, ResultOverlay } from '@gujuck/ui'
-import type { CanvasStage } from '@gujuck/game-core'
-import { ArcheryGame } from './game/ArcheryGame'
-import { ARROWS_PER_ROUND, useLocalRound } from './useLocalRound'
+import { useState } from 'react'
+import { GameShell } from '@gujuck/ui'
+import { AuthScreen } from './screens/AuthScreen'
+import { LobbyScreen } from './screens/LobbyScreen'
+import { LocalBoardScreen } from './screens/LocalBoardScreen'
+import { OnlineBoardScreen } from './screens/OnlineBoardScreen'
+import { useMatch } from './useMatch'
 import './App.css'
 
+/**
+ * 화면 라우팅.
+ *
+ * 온라인 단계(auth/lobby/waiting/playing)는 useMatch가 서버 메시지에 따라
+ * 정한다. 혼자 쏘기는 서버와 무관하므로 그 위에 얹는 별도 상태로 둔다 —
+ * 로그인하지 않아도 들어갈 수 있어야 하기 때문이다.
+ */
 export default function App() {
-  const round = useLocalRound()
-  const gameRef = useRef<ArcheryGame | null>(null)
+  const match = useMatch()
+  const [local, setLocal] = useState(false)
 
-  const handleMount = useCallback(
-    (stage: CanvasStage) => {
-      const game = new ArcheryGame({
-        stage,
-        onShotLanded: round.onShotLanded,
-        onChange: round.onSnapshot,
-      })
-      gameRef.current = game
-      round.attach(game)
+  if (local) {
+    return <LocalBoardScreen onExit={() => setLocal(false)} />
+  }
 
-      return () => {
-        game.destroy()
-        gameRef.current = null
-      }
-    },
-    // 마운트 시 한 번만 붙인다. round의 콜백은 참조가 바뀌어도 같은 동작이다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  )
+  if (match.phase === 'auth') {
+    return <AuthScreen onAuthenticated={match.authenticated} onPlayLocal={() => setLocal(true)} />
+  }
 
-  return (
-    <GameShell
-      header={
-        <div className="ar-header">
-          <div className="ar-title">양궁</div>
-          <div className="ar-meta">
-            <span className="ar-chip">🏹 {ARROWS_PER_ROUND - round.shots.length}</span>
-            <span className="ar-chip">⭐ {round.total}</span>
-            <span className="ar-chip">{windLabel(round.wind)}</span>
-          </div>
-        </div>
-      }
-      footer={
-        <div className="ar-footer">
-          <div className="ar-shots">
-            {Array.from({ length: ARROWS_PER_ROUND }, (_, index) => (
-              <span
-                key={index}
-                className={`ar-shot ${round.shots[index] === undefined ? '' : 'is-done'}`}
-              >
-                {round.shots[index] ?? '·'}
-              </span>
-            ))}
-          </div>
-          <div className="ar-status">{statusText(round.finished, round.snapshot.flying)}</div>
-        </div>
-      }
-    >
-      <GameCanvas onMount={handleMount} />
-
-      <ResultOverlay
-        open={round.finished}
-        title={`${round.total}점`}
-        description={`${ARROWS_PER_ROUND}발 만점은 ${ARROWS_PER_ROUND * 10}점이에요.`}
-        primaryLabel="다시 쏘기"
-        onPrimary={round.reset}
+  if (match.phase === 'lobby') {
+    return (
+      <LobbyScreen
+        profile={match.profile}
+        notice={match.notice}
+        onCreateRoom={match.createRoom}
+        onJoinRoom={match.joinRoom}
+        onPlayLocal={() => setLocal(true)}
+        onLogout={match.logout}
       />
-    </GameShell>
-  )
-}
+    )
+  }
 
-function statusText(finished: boolean, flying: boolean): string {
-  if (finished) return '끝났어요'
-  if (flying) return '날아가는 중…'
-  return '활을 뒤로 당겼다 놓으세요'
-}
+  if (match.phase === 'waiting') {
+    return (
+      <GameShell>
+        <div className="ar-center">
+          <div className="ar-card">
+            <h2 className="ar-card__title">방 코드</h2>
+            <div className="ar-code">{match.roomCode}</div>
+            <p className="ar-card__lead">상대에게 이 코드를 알려주세요.</p>
+            <button className="gj-btn" onClick={match.backToLobby}>
+              취소
+            </button>
+          </div>
+        </div>
+      </GameShell>
+    )
+  }
 
-function windLabel(wind: number): string {
-  if (Math.abs(wind) < 0.05) return '무풍'
-  return `${wind > 0 ? '→' : '←'} ${Math.abs(wind).toFixed(1)}`
+  return <OnlineBoardScreen match={match} onExit={match.backToLobby} />
 }
