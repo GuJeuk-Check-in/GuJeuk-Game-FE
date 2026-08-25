@@ -1,0 +1,28 @@
+# EC2 배포용.
+#
+# MySQL을 새로 띄우지 않는다. 이 호스트는 3.8GB 중 여유가 700MB 남짓인데
+# MySQL 컨테이너 하나가 ~460MB를 쓴다. 하나 더 올리면 체크인 prod 앱이
+# OOM으로 죽는다(스왑도 없다). 대신 체크인 prod MySQL에 별도 DB와 계정을
+# 만들어 쓴다 — gujuck_game / gameuser.
+#
+# 인스턴스를 키우면 그때 전용 MySQL로 분리하는 편이 낫다.
+services:
+  app:
+    image: ${APP_IMAGE:?APP_IMAGE is required}
+    container_name: gujuck-game-app
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # 8090은 monitor-bot이 쓰고 있어 8095다.
+      #
+      # 127.0.0.1 에만 묶으면 안 된다. Caddy는 컨테이너 안에서 돌기 때문에
+      # host.docker.internal(=172.17.0.1)로 붙는데, 루프백 바인딩에는 닿지
+      # 못해 502가 난다. 외부 노출은 EC2 보안 그룹이 막는다(80/443/22만 열림).
+      - '8095:8090'
+    networks:
+      - gujeuk-aws-prod_default
+
+networks:
+  # 체크인 prod 스택이 만든 네트워크. 여기 붙어야 mysql 호스트명이 풀린다.
+  gujeuk-aws-prod_default:
+    external: true
