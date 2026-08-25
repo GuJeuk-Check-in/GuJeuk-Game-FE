@@ -115,7 +115,8 @@ public class ArcheryRoomService implements ArcheryRoomListener {
 
     @Override
     public void dispose(ArcheryRoom room) {
-        rooms.remove(room.getCode());
+        // 코드만 보고 지우면 그 사이 같은 코드로 만들어진 다른 방을 지울 수 있다.
+        rooms.remove(room.getCode(), room);
     }
 
     @Override

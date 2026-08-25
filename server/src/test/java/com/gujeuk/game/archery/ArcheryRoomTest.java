@@ -261,6 +261,19 @@ class ArcheryRoomTest {
     }
 
     @Test
+    void 방장이_자리를_비운_방에는_들어갈_수_없다() {
+        FakeListener fake = new FakeListener();
+        ArcheryRoom waiting = new ArcheryRoom("CODE04", fake, fixedRandom(true));
+        waiting.open(1L, "host", 1200, null);
+        waiting.disconnect(waiting.getHost());
+
+        assertThatThrownBy(() -> waiting.join(2L, "guest", 1200, null))
+                .hasMessageContaining("자리를 비웠");
+
+        assertThat(waiting.getState()).isEqualTo(ArcheryRoomState.WAITING);
+    }
+
+    @Test
     void 기권하면_상대가_이긴다() {
         room.resign(host());
 

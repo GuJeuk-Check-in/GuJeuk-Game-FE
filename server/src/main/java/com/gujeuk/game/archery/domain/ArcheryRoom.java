@@ -90,6 +90,12 @@ public class ArcheryRoom {
         if (state != ArcheryRoomState.WAITING || guest != null) {
             throw GameException.conflict("이미 시작했거나 자리가 없는 방입니다.");
         }
+        // 방장이 끊긴 채 유예 시간을 보내는 중일 수 있다. 그대로 시작하면 몰수
+        // 타이머는 대결 중에만 걸리므로 아무도 쏘지 못하는 방이 된다. 들어온
+        // 쪽에는 OPPONENT_LEFT조차 가지 않아 영문도 모르고 기다리게 된다.
+        if (host == null || !host.isConnected()) {
+            throw GameException.conflict("방장이 자리를 비웠습니다. 잠시 후 다시 시도해주세요.");
+        }
 
         cancelDispose();
         guest = new ArcherySeat(memberId, nickname, rating, !host.isFirst(), session);
