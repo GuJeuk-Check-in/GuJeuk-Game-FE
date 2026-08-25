@@ -99,6 +99,49 @@ const MAX_FLIGHT_STEPS = 3000
 
 export type Shooter = 'me' | 'them'
 
+/**
+ * 세계의 어디를 화면 어디에 보여줄지.
+ *
+ * 지금까지는 세계 전체를 항상 contain 했다. 궁수와 과녁이 680px 떨어져 있어서
+ * 세로 화면에서는 과녁 링 간격이 4px까지 줄고 캔버스의 70%가 빈 배경이 된다.
+ * 상용 양궁 게임이 하나같이 카메라를 움직이는 이유다.
+ */
+export interface Camera {
+  /** 화면 한가운데가 바라보는 세계 좌표. */
+  x: number
+  y: number
+  /** 1이면 세계 전체가 들어오는 배율. 크면 확대. */
+  zoom: number
+}
+
+/** 세계 전체를 담는 카메라. 지금까지의 화면과 같다. */
+export const FULL_VIEW: Camera = { x: WORLD_W / 2, y: WORLD_H / 2, zoom: 1 }
+
+export interface ViewSize {
+  width: number
+  height: number
+}
+
+/**
+ * 카메라를 화면 변환으로 바꾼다.
+ *
+ * 순수 함수로 둔 이유는 이 값이 조준 좌표 변환과 렌더 양쪽에 쓰이기 때문이다.
+ * 둘이 어긋나면 누른 자리와 그려지는 자리가 달라진다.
+ */
+export function cameraTransform(
+  view: ViewSize,
+  camera: Camera,
+): { scale: number; offsetX: number; offsetY: number } {
+  // zoom 1이 세계 전체가 들어오는 배율이 되도록 기준 배율을 먼저 잡는다.
+  const base = Math.min(view.width / WORLD_W, view.height / WORLD_H)
+  const scale = base * camera.zoom
+  return {
+    scale,
+    offsetX: view.width / 2 - camera.x * scale,
+    offsetY: view.height / 2 - camera.y * scale,
+  }
+}
+
 /** 한 발의 입력. 이 값만 있으면 어느 화면에서도 같은 궤적이 나온다. */
 export interface ShotInput {
   /** 라디안. 0이 수평, 양수가 위쪽. */
@@ -172,6 +215,9 @@ export class ArcheryGame {
   /** 내 차례이고 아직 안 쐈을 때만 true. */
   private armed = false
   private wind = 0
+
+  /** 지금 보고 있는 곳. 아직은 늘 세계 전체다. */
+  private camera: Camera = FULL_VIEW
 
   private aiming = false
   private aimPoint: PointerPoint | null = null
@@ -403,28 +449,25 @@ export class ArcheryGame {
   // ---- 좌표 변환 ----------------------------------------------------------
 
   private toWorld(point: PointerPoint): PointerPoint {
-    const { scale, offsetX, offsetY } = this.viewport()
+    const { scale, offsetX, offsetY } = cameraTransform(this.stage, this.camera)
     return { x: (point.x - offsetX) / scale, y: (point.y - offsetY) / scale }
-  }
-
-  /** contain 방식: 세계 전체가 항상 보이도록 작은 쪽 배율을 택한다. */
-  private viewport(): { scale: number; offsetX: number; offsetY: number } {
-    const { width, height } = this.stage
-    const scale = Math.min(width / WORLD_W, height / WORLD_H)
-    return {
-      scale,
-      offsetX: (width - WORLD_W * scale) / 2,
-      offsetY: (height - WORLD_H * scale) / 2,
-    }
   }
 
   // ---- 렌더 ---------------------------------------------------------------
 
   private render(): void {
-    const { ctx } = this.stage
-    const { scale, offsetX, offsetY } = this.viewport()
-
     this.stage.fill('#0f1420')
+    this.renderScene(this.stage.ctx, this.camera)
+  }
+
+  /**
+   * 한 카메라로 세계를 한 번 그린다.
+   *
+   * 카메라만 바꿔 여러 번 부를 수 있게 떼어 놓는다. 조준 중 과녁을 확대해
+   * 보여주는 창이 이 함수를 같은 프레임에 한 번 더 부르는 것으로 끝난다.
+   */
+  private renderScene(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    const { scale, offsetX, offsetY } = cameraTransform(this.stage, camera)
 
     ctx.save()
     ctx.translate(offsetX, offsetY)
