@@ -132,7 +132,9 @@ public class ArcheryRoom {
         Map<String, Object> shot = new LinkedHashMap<>();
         shot.put("angle", angle);
         shot.put("power", power);
-        shot.put("wind", wind);
+        // 이 발이 실제로 맞은 바람. fillCommon이 넣는 wind(다음 발용)와 뜻이 달라
+        // 키를 나눠야 한다. 한 키를 같이 쓰면 나중에 넣는 쪽이 덮어쓴다.
+        shot.put("shotWind", wind);
         shot.put("score", score);
 
         if (roundDone) {

@@ -136,11 +136,15 @@ export function useMatch() {
             applyTurn(next.yourTurn, next.wind)
           } else {
             // 상대 화살을 같은 입력으로 재생한다. 내 차례는 재생이 끝난 뒤에 연다.
+            //
+            // 바람은 shotWind를 쓴다. next.wind는 다음 발에 불 바람이라 이 화살과
+            // 무관하다 — 라운드를 닫는 발에서는 서버가 그 직전에 새로 뽑기 때문에,
+            // 둘을 헷갈리면 상대 화면에서만 궤적이 어긋난다.
             turnAfterReplay.current = { canShoot: next.yourTurn, wind: next.wind }
             gameRef.current?.replay({
               angle: message.angle as number,
               power: message.power as number,
-              wind: message.wind as number,
+              wind: message.shotWind as number,
             })
           }
           break
