@@ -455,8 +455,9 @@ export class ArcheryGame {
     // 바깥 링부터 안쪽으로 덮어 그린다.
     for (let i = RING_COUNT; i >= 1; i -= 1) {
       const radius = RING_STEP * i
-      // 링 두 개가 색 하나를 나눠 쓴다. 1·2가 흰색, 9·10이 금색.
-      const colorIndex = Math.floor((RING_COUNT - i) / 2)
+      // 링 두 개가 색 하나를 나눠 쓴다. RING_COLORS가 안쪽부터이므로 인덱스도
+      // 안쪽(i=1)부터 세야 한다. 바깥부터 세면 배색이 통째로 뒤집힌다.
+      const colorIndex = Math.floor((i - 1) / 2)
 
       ctx.beginPath()
       ctx.ellipse(TARGET_X, TARGET_Y, TARGET_HALF_W, radius, 0, 0, Math.PI * 2)
