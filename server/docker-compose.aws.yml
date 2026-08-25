@@ -13,9 +13,12 @@ services:
     restart: unless-stopped
     env_file: .env
     ports:
-      # 8090은 monitor-bot이 쓰고 있어 8095다. 외부에 직접 열지 않고
-      # Caddy가 host.docker.internal:8095로 붙는다.
-      - '127.0.0.1:8095:8090'
+      # 8090은 monitor-bot이 쓰고 있어 8095다.
+      #
+      # 127.0.0.1 에만 묶으면 안 된다. Caddy는 컨테이너 안에서 돌기 때문에
+      # host.docker.internal(=172.17.0.1)로 붙는데, 루프백 바인딩에는 닿지
+      # 못해 502가 난다. 외부 노출은 EC2 보안 그룹이 막는다(80/443/22만 열림).
+      - '8095:8090'
     networks:
       - gujeuk-aws-prod_default
 
