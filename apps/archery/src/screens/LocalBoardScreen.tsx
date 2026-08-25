@@ -92,7 +92,7 @@ export function LocalBoardScreen({ onExit }: Props) {
 function statusText(finished: boolean, flying: boolean): string {
   if (finished) return '끝났어요'
   if (flying) return '날아가는 중…'
-  return '활을 뒤로 당겼다 놓으세요'
+  return '아무 데나 눌러 뒤로 당겼다 놓으세요'
 }
 
 function windLabel(wind: number): string {

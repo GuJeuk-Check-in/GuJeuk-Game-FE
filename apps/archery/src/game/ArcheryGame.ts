@@ -44,17 +44,25 @@ const RING_COLORS = ['#f5cf3d', '#e8474b', '#4d8dff', '#23262e', '#edeff5'] as c
 /** 흰색·금색 링 위에 그리는 경계선. 색이 옅어 경계가 안 보인다. */
 const RING_LINE = 'rgba(0, 0, 0, 0.28)'
 
-const MAX_PULL = 150
 /**
- * 조준으로 인정하는 최소 드래그 거리(월드 px).
+ * 조준으로 인정하는 최소 드래그(화면 px).
  *
- * 당김 벡터를 누른 지점이 아니라 궁수 기준으로 재기 때문에, 이 문턱이 없으면
- * 캔버스 아무 데나 한 번 탭한 것이 곧 만개 조준이 된다. 과녁 쪽을 탭하면
- * 최대 세기로 뒤를 향해 쏴서 화살 한 발이 0점으로 사라진다.
+ * 이 문턱이 없으면 캔버스를 한 번 탭한 것이 곧 조준이 된다.
  */
-const MIN_DRAG = 12
+const MIN_DRAG_PX = 14
 /** 쏠 수 있는 최대 각도. 이보다 위나 뒤로 조준하면 발사하지 않는다. */
 const MAX_ANGLE = (85 * Math.PI) / 180
+
+/**
+ * 만개에 필요한 드래그 거리(화면 px).
+ *
+ * 세계 좌표가 아니라 화면 좌표로 재는 이유가 두 가지다. 카메라가 확대·이동해도
+ * 당기는 감각이 그대로여야 하고, 궁수 좌표를 기준으로 재면 세로 화면에서 만개
+ * 지점이 화면 밖으로 나가 아예 낼 수 없는 각도가 생긴다.
+ */
+function maxPullPx(view: ViewSize): number {
+  return clamp(Math.min(view.width, view.height) * 0.32, 90, 220)
+}
 /**
  * 최대로 당겼을 때의 화살 초기 속도(스텝당 이동 픽셀).
  *
@@ -168,6 +176,8 @@ export interface ArcherySnapshot {
   flying: boolean
   /** 지금 당기고 있는 세기(0~1). 활 시위 표시에 쓴다. */
   pull: number
+  /** 지금 조준 중인 각도(도). 당기고 있지 않으면 null. */
+  angleDeg: number | null
 }
 
 export interface ArcheryGameOptions {
@@ -220,9 +230,9 @@ export class ArcheryGame {
   private camera: Camera = FULL_VIEW
 
   private aiming = false
-  private aimPoint: PointerPoint | null = null
-  /** 포인터를 누른 지점. 여기서 얼마나 끌었는지로 탭과 조준을 가른다. */
+  /** 누른 지점과 지금 끌고 있는 지점. 둘 다 화면 좌표다. */
   private downPoint: PointerPoint | null = null
+  private dragPoint: PointerPoint | null = null
 
   constructor(options: ArcheryGameOptions) {
     this.stage = options.stage
@@ -277,8 +287,8 @@ export class ArcheryGame {
     this.stuck = []
     this.armed = false
     this.aiming = false
-    this.aimPoint = null
     this.downPoint = null
+    this.dragPoint = null
     this.emit()
   }
 
@@ -366,10 +376,12 @@ export class ArcheryGame {
   }
 
   private emit(): void {
+    const aim = this.aimState()
     this.onChange({
       canShoot: this.armed && this.arrow === null,
       flying: this.arrow !== null,
-      pull: this.aiming ? this.pullRatio() : 0,
+      pull: aim?.power ?? 0,
+      angleDeg: aim ? (aim.angle * 180) / Math.PI : null,
     })
   }
 
@@ -378,9 +390,9 @@ export class ArcheryGame {
   private handleDown(point: PointerPoint): void {
     if (!this.armed || this.arrow !== null) return
     // 누른 지점만 기억한다. 여기서 바로 조준을 켜면 탭 한 번이 곧 발사가 된다.
-    this.downPoint = this.toWorld(point)
+    this.downPoint = point
+    this.dragPoint = null
     this.aiming = false
-    this.aimPoint = null
     this.emit()
   }
 
@@ -388,69 +400,55 @@ export class ArcheryGame {
     const down = this.downPoint
     if (!down) return
 
-    const world = this.toWorld(point)
     // 누른 자리에서 충분히 끌어야 조준이 시작된다.
-    if (!this.aiming && Math.hypot(world.x - down.x, world.y - down.y) < MIN_DRAG) return
+    if (!this.aiming && Math.hypot(point.x - down.x, point.y - down.y) < MIN_DRAG_PX) return
 
     this.aiming = true
-    this.aimPoint = world
+    this.dragPoint = point
     this.emit()
   }
 
   private handleUp(): void {
-    const aim = this.aimPoint
-    const wasAiming = this.aiming
+    const aim = this.aimState()
 
     this.aiming = false
-    this.aimPoint = null
     this.downPoint = null
+    this.dragPoint = null
 
-    if (!wasAiming || !aim || !this.armed) {
+    if (!aim || !this.armed || aim.power <= 0) {
       this.emit()
       return
     }
-
-    const pulled = this.pullVector(aim)
-    if (pulled.distance < MIN_DRAG) {
-      this.emit()
-      return
-    }
-
-    const angle = Math.atan2(-pulled.dy, pulled.dx)
     // 뒤나 아래로 조준한 것은 실수다. 쏘면 화살만 버리므로 차례를 유지한다.
-    if (angle < 0 || angle > MAX_ANGLE) {
+    if (aim.angle < 0 || aim.angle > MAX_ANGLE) {
       this.emit()
       return
     }
 
     this.armed = false
-    this.launch(
-      {
-        angle,
-        power: clamp(pulled.distance, 0, MAX_PULL) / MAX_PULL,
-        wind: this.wind,
-      },
-      'me',
-    )
+    this.launch({ angle: aim.angle, power: aim.power, wind: this.wind }, 'me')
   }
 
-  /** 활을 당기듯 뒤로 끌었다 놓는다. 당긴 반대 방향으로 날아간다. */
-  private pullVector(aim: PointerPoint): { dx: number; dy: number; distance: number } {
-    const dx = ARCHER_X - aim.x
-    const dy = ARCHER_Y - aim.y
-    return { dx, dy, distance: Math.hypot(dx, dy) }
-  }
+  /**
+   * 지금 당기고 있는 각도와 세기. 당기는 중이 아니면 null.
+   *
+   * 누른 지점에서 얼마나 끌었는지로만 정한다. 궁수 좌표는 쓰지 않는다 — 전에는
+   * 그 때문에 과녁 쪽을 한 번 탭한 것이 만개 조준으로 읽혔다.
+   */
+  private aimState(): { angle: number; power: number } | null {
+    const down = this.downPoint
+    const drag = this.dragPoint
+    if (!this.aiming || !down || !drag) return null
 
-  private pullRatio(): number {
-    if (!this.aimPoint) return 0
-    return clamp(this.pullVector(this.aimPoint).distance, 0, MAX_PULL) / MAX_PULL
-  }
+    // 활을 당기듯 뒤로 끈다. 당긴 반대 방향으로 날아간다.
+    const dx = down.x - drag.x
+    const dy = down.y - drag.y
+    const max = maxPullPx(this.stage)
 
-  // ---- 좌표 변환 ----------------------------------------------------------
-
-  private toWorld(point: PointerPoint): PointerPoint {
-    const { scale, offsetX, offsetY } = cameraTransform(this.stage, this.camera)
-    return { x: (point.x - offsetX) / scale, y: (point.y - offsetY) / scale }
+    return {
+      angle: Math.atan2(-dy, dx),
+      power: clamp(Math.hypot(dx, dy), 0, max) / max,
+    }
   }
 
   // ---- 렌더 ---------------------------------------------------------------
@@ -458,6 +456,8 @@ export class ArcheryGame {
   private render(): void {
     this.stage.fill('#0f1420')
     this.renderScene(this.stage.ctx, this.camera)
+    // 게이지는 세계 변환 밖에서, 손가락 자리에 그린다.
+    this.drawAimHud(this.stage.ctx)
   }
 
   /**
@@ -579,7 +579,7 @@ export class ArcheryGame {
   }
 
   private drawArcher(ctx: CanvasRenderingContext2D): void {
-    const pull = this.aiming ? this.pullRatio() : 0
+    const pull = this.aimState()?.power ?? 0
 
     // 몸
     ctx.strokeStyle = '#e9edf5'
@@ -645,29 +645,59 @@ export class ArcheryGame {
   /**
    * 조준선.
    *
-   * 당긴 방향과 세기만 보여준다. 예상 궤적은 그리지 않는다 — 어디에 떨어질지
+   * 당긴 방향과 세기만 보여준다. 예상 낙하점은 그리지 않는다 — 어디에 떨어질지
    * 미리 보여주면 바람을 읽을 이유가 없어진다.
    */
   private drawAim(ctx: CanvasRenderingContext2D): void {
-    if (!this.aiming || !this.aimPoint) return
+    const aim = this.aimState()
+    if (!aim) return
 
-    ctx.strokeStyle = 'rgba(77, 141, 255, 0.9)'
+    const length = 60 + aim.power * 150
+    ctx.strokeStyle = 'rgba(245, 207, 61, 0.9)'
     ctx.lineWidth = 3
     ctx.setLineDash([10, 8])
     ctx.beginPath()
     ctx.moveTo(ARCHER_X, ARCHER_Y)
-    ctx.lineTo(this.aimPoint.x, this.aimPoint.y)
+    ctx.lineTo(ARCHER_X + Math.cos(aim.angle) * length, ARCHER_Y - Math.sin(aim.angle) * length)
     ctx.stroke()
     ctx.setLineDash([])
+  }
 
-    // 당긴 세기 막대
-    const ratio = this.pullRatio()
-    const barX = ARCHER_X - 40
-    const barY = ARCHER_Y - 70
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.18)'
-    ctx.fillRect(barX, barY, 80, 8)
-    ctx.fillStyle = ratio > 0.85 ? '#e8604c' : '#4d8dff'
-    ctx.fillRect(barX, barY, 80 * ratio, 8)
+  /**
+   * 당김 게이지. 세계가 아니라 화면 좌표에 그린다.
+   *
+   * 세계에 그리면 카메라가 움직일 때 손가락에서 떨어진다. 지금 얼마나 당겼는지는
+   * 손이 있는 자리에 붙어 있어야 읽힌다.
+   */
+  private drawAimHud(ctx: CanvasRenderingContext2D): void {
+    const aim = this.aimState()
+    const drag = this.dragPoint
+    if (!aim || !drag) return
+
+    const radius = 34
+    ctx.save()
+    ctx.translate(drag.x, drag.y)
+
+    ctx.lineWidth = 5
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)'
+    ctx.beginPath()
+    ctx.arc(0, 0, radius, 0, Math.PI * 2)
+    ctx.stroke()
+
+    ctx.strokeStyle = aim.power > 0.92 ? '#e8604c' : '#f5cf3d'
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.arc(0, 0, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * aim.power)
+    ctx.stroke()
+    ctx.lineCap = 'butt'
+
+    ctx.fillStyle = '#e9edf5'
+    ctx.font = '600 13px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(`${Math.round((aim.angle * 180) / Math.PI)}°`, 0, -radius - 10)
+    ctx.fillText(`${Math.round(aim.power * 100)}%`, 0, radius + 20)
+
+    ctx.restore()
   }
 }
 

@@ -16,7 +16,7 @@ export interface LocalRound {
   reset: () => void
 }
 
-const IDLE: ArcherySnapshot = { canShoot: false, flying: false, pull: 0 }
+const IDLE: ArcherySnapshot = { canShoot: false, flying: false, pull: 0, angleDeg: null }
 
 /** 매 발 새로 뽑는 바람. -1 ~ 1, 소수 한 자리. */
 function rollWind(): number {
