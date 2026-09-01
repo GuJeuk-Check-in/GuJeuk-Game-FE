@@ -44,6 +44,11 @@ jobs:
       - name: Typecheck
         run: yarn turbo typecheck
 
+      # 규칙 모듈(펫타운의 stats·save 등)은 화면 없이 도는 순수 함수라 여기서
+      # 검증한다. test 스크립트가 없는 워크스페이스는 turbo 가 건너뛴다.
+      - name: Test
+        run: yarn turbo test
+
       - name: Build all apps
         run: yarn turbo build
 
@@ -79,6 +84,7 @@ jobs:
           - { slug: tic-tac-toe, secret: TIC_TAC_TOE }
           - { slug: alkkagi, secret: ALKKAGI }
           - { slug: archery, secret: ARCHERY }
+          - { slug: pet, secret: PET }
     steps:
       - uses: actions/checkout@v4
 
