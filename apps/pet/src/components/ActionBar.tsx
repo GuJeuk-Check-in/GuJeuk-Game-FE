@@ -11,13 +11,15 @@ const LABEL: Record<ActionId, string> = {
 }
 
 /**
- * 아직 만들지 않은 것들(M3 미니게임 · M4 상점).
+ * 아직 만들지 않은 것(M4 상점).
  *
  * 버튼을 감추지 않고 비활성으로 남기는 이유: 방은 이미 여섯 개고 좌우로 넘기면
  * 놀이터와 상점이 나온다. 그 방에 아무것도 없으면 "고장 났나"로 읽힌다.
  * 대신 **눌리게 두지는 않는다** — 눌러서 아무 일도 없는 것이 제일 나쁘다.
+ *
+ * 미니게임은 M3 에서 열렸으므로 여기서 빠졌다.
  */
-const COMING_SOON: readonly ActionId[] = ['play', 'shop']
+const COMING_SOON: readonly ActionId[] = ['shop']
 
 export interface ActionBarProps {
   /** 지금 방에서 할 수 있는 것. rooms.ts 의 RoomDef.actions 를 그대로 받는다. */

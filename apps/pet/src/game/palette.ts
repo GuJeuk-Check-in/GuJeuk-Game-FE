@@ -68,6 +68,19 @@ export const PALETTE_RGB: readonly Rgb[] = PALETTE.map(
 /** CSS 에서 쓰는 `#rrggbb` 형태. */
 export const PALETTE_CSS: readonly string[] = PALETTE.map((hex) => `#${hex}`)
 
+/**
+ * 팔레트 색 하나를 CSS 로 바꾼다. **렌더링 코드는 이 함수로만 색을 집는다.**
+ *
+ * `PALETTE_CSS[5]` 처럼 인덱스로 지목해도 되지만 그쪽 타입은 `string` 이라
+ * 인덱스를 잘못 적어도, 그 색이 팔레트에서 빠져도 컴파일이 조용히 통과한다.
+ * 인자를 PaletteHex 로 받으면 둘 다 컴파일에서 걸리고, 코드에 색 이름이 그대로
+ * 남아 무슨 색인지 주석 없이 읽힌다. 세 미니게임이 같은 방식을 쓰도록 헬퍼를
+ * 각 파일에 두지 않고 팔레트의 유일한 출처인 여기에 모은다.
+ */
+export function paletteCss(hex: PaletteHex): string {
+  return `#${hex}`
+}
+
 // 이 팔레트에는 순수 검정도 순수 흰색도 없다. 가장 어두운 색과 가장 밝은 색이
 // 아래 두 상수다. 흑백 테스트 카드로 확인하다가 "검정이 안 나온다"고 파이프라인을
 // 의심하지 않도록 이름을 붙여 둔다. 외곽선은 DARKEST 로, 하이라이트는 LIGHTEST 로

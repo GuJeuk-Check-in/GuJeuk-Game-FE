@@ -156,7 +156,10 @@
 
 /* ---- 저장 실패 알림 ------------------------------------------------------- */
 
-/* 화면을 막지 않는다. 저장이 안 되는 것과 놀 수 없는 것은 다른 일이다. */
+/* 화면을 막지 않는다. 저장이 안 되는 것과 놀 수 없는 것은 다른 일이다.
+   읽히기만 하면 되므로 입력을 통과시킨다 — 이 띠는 미니게임 캔버스 위에도
+   얹히는데, 그때 손이 닿으면 화면 위쪽 전체가 조작 사각지대가 되고 그 자리에
+   있는 나가기 버튼까지 눌리지 않는다(.pt-minigame__hud 와 같은 이유). */
 .pt-banner {
   position: absolute;
   top: 8px;
@@ -164,6 +167,7 @@
   left: 8px;
   margin: 0;
   padding: 8px 10px;
+  pointer-events: none;
   border: 2px solid var(--pt-c3); /* f98284 — 팔레트에서 경고로 읽히는 유일한 색 */
   background: var(--pt-panel);
   color: var(--pt-text);
@@ -457,6 +461,285 @@
 .pt-sheet__close {
   margin-top: 12px;
   width: 100%;
+}
+
+/* ---- 놀이 고르기 ---------------------------------------------------------- */
+
+.pt-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  /* 복귀 카드와 같은 농도로 깐다. 뒤의 놀이터 방이 비쳐야 "여기서 노는 것"으로 읽힌다. */
+  background: color-mix(in srgb, var(--pt-ink) 72%, transparent);
+  z-index: 12;
+}
+
+.pt-play__sheet {
+  width: 100%;
+  max-width: 320px;
+  padding: 18px;
+  background: var(--pt-panel);
+  border: 2px solid var(--pt-ink);
+  border-radius: var(--gj-radius-lg);
+}
+
+.pt-play__title {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.pt-play__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.pt-play__btn {
+  width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.pt-play__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.pt-play__label {
+  font-weight: 800;
+}
+
+/* 비용은 오른쪽 끝에 붙여 세 게임을 세로로 비교하게 둔다. */
+.pt-play__cost {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pt-play__hint {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+/* 못 들어가는 이유는 버튼 바로 아래에 붙인다. 토스트로 띄우면 어느 게임이
+   막힌 것인지가 사라진다. */
+.pt-play__reason {
+  margin: 6px 2px 0;
+  color: var(--pt-c3); /* f98284 — 팔레트에서 경고로 읽히는 유일한 색 */
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pt-play__close {
+  margin-top: 14px;
+  width: 100%;
+}
+
+/* ---- 미니게임 화면 -------------------------------------------------------- */
+
+.pt-minigame {
+  position: relative;
+  height: 100%;
+}
+
+/* 캔버스 위에 얹는 얇은 띠. 점수와 나가기만 둔다 — 게임 중에 읽을 것이
+   늘어나면 화면이 아니라 계기판이 된다. */
+/* 오른쪽 **아래**에 둔다. 세 게임 모두 점수·시간·라이프를 캔버스 위쪽에 그리므로
+   위에 얹으면 반드시 겹친다. 아래쪽 오른편은 조작(펫·타일)이 없는 자리다. */
+.pt-minigame__hud {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  pointer-events: none;
+}
+
+/* 띠는 입력을 통과시키고 버튼만 받는다. 그러지 않으면 캔버스 위쪽 띠 전체가
+   조작 사각지대가 되어 그 자리를 탭해도 펫이 점프하지 않는다. */
+.pt-minigame__exit {
+  margin-left: auto;
+  padding: 6px 14px;
+  font-size: 13px;
+  pointer-events: auto;
+}
+
+/* 나가기 버튼 바로 아래. 버튼과 한 덩어리로 읽혀야 무엇에 대한 설명인지 안다. */
+.pt-minigame__note {
+  margin: 0;
+  padding: 2px 6px;
+  background: color-mix(in srgb, var(--pt-ink) 70%, transparent);
+  border-radius: var(--gj-radius-pill);
+  color: var(--pt-text);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.pt-minigame__notice {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--pt-dim);
+  font-size: 13px;
+}
+
+/* ---- 결과 카드 ----------------------------------------------------------- */
+
+.pt-result {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--pt-ink) 72%, transparent);
+  z-index: 13;
+}
+
+/* 카드가 그냥 켜지면 결과가 "원래 거기 있던 것"으로 보인다. 방금 벌어진 일로
+   읽히게 아래에서 살짝 올라오며 들어온다. */
+@keyframes pt-result-in {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 한 요소의 규칙은 한 블록에 모은다. 나눠 두면 여백을 고치러 온 사람이 위쪽
+   블록만 보고 애니메이션이 걸려 있는 줄 모른다. */
+.pt-result__sheet {
+  width: 100%;
+  max-width: 320px;
+  padding: 20px;
+  background: var(--pt-panel);
+  border: 2px solid var(--pt-ink);
+  border-radius: var(--gj-radius-lg);
+  text-align: center;
+  animation: pt-result-in var(--gj-dur) var(--gj-ease);
+}
+
+.pt-result__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.pt-result__score {
+  margin: 8px 0 14px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+}
+
+.pt-result__scoreValue {
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1;
+  /* 숫자가 올라가는 동안 폭이 흔들리면 옆의 단위가 덜덜 떨린다. */
+  font-variant-numeric: tabular-nums;
+}
+
+.pt-result__scoreUnit {
+  color: var(--pt-dim);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pt-result__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.pt-result__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--pt-ink);
+  border-radius: var(--gj-radius);
+  font-size: 14px;
+}
+
+.pt-result__key {
+  font-weight: 700;
+}
+
+.pt-result__coin {
+  color: var(--pt-coin);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.pt-result__exp {
+  color: var(--pt-energy);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 깎이기 전 값. 결과보다 작게 두되 지우지는 않는다 — 조용히 덜 주면 버그로
+   오해한다(명세 §7). */
+.pt-result__before {
+  margin: 8px 0 0;
+  color: var(--pt-dim);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pt-result__note {
+  margin: 6px 0 0;
+  color: var(--pt-text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pt-result__levelup {
+  margin: 12px 0 0;
+  padding: 8px;
+  background: var(--pt-ink);
+  border-radius: var(--gj-radius);
+  color: var(--pt-coin);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.pt-result__buttons {
+  margin-top: 16px;
+  display: flex;
+  gap: 8px;
+}
+
+.pt-result__btn {
+  flex: 1 1 0;
+}
+
+/* 움직임을 끈 사용자에게는 그대로 보여준다. 카운트업도 ResultCard 가 끈다. */
+@media (prefers-reduced-motion: reduce) {
+  .pt-result__sheet {
+    animation: none;
+  }
 }
 
 /* ---- 알림 한 줄 ----------------------------------------------------------- */

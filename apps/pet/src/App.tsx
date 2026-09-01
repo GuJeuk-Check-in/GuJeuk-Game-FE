@@ -10,9 +10,11 @@ import {
   WELCOME_BACK_MIN_MS,
   expForNextLevel,
 } from './game/pet/economy'
+import type { MinigameId } from './game/pet/economy'
 import { FOOD_IDS } from './game/pet/foods'
 import { shouldShowWelcomeBack } from './game/pet/stats'
 import type { ActionOutcome } from './game/pet/actions'
+import type { Settlement } from './game/pet/minigames'
 import { DEFAULT_ROOM, roomAt, roomIndex } from './game/rooms'
 import type { ActionId } from './game/rooms'
 import type { FoodId, RoomId } from './game/types'
@@ -23,6 +25,9 @@ import { WelcomeBackCard } from './components/WelcomeBackCard'
 import { RoomNav } from './components/RoomNav'
 import { ActionBar } from './components/ActionBar'
 import { InventorySheet } from './components/InventorySheet'
+import { PlayMenu } from './components/PlayMenu'
+import { MinigameScreen } from './components/MinigameScreen'
+import { ResultCard } from './components/ResultCard'
 import { Toast } from './components/Toast'
 import { usePet } from './usePet'
 import type { ActionKind } from './usePet'
@@ -56,6 +61,54 @@ const JUMP_MS = [HOUR_MS, WELCOME_BACK_MIN_MS, OFFLINE_CAP_MS, 2 * OFFLINE_CAP_M
 /** 개발용 지급 버튼이 한 번에 주는 개수. 명세 §9 의 튜토리얼 2단계와 같은 3개다. */
 const DEV_GRANT_COUNT = 3
 
+/**
+ * 미니게임의 이름·설명·점수 단위.
+ *
+ * 고르는 화면(PlayMenu)과 결과 화면(ResultCard)이 같은 말을 써야 해서 여기 한
+ * 곳에 두고 양쪽에 내려보낸다. 각 컴포넌트가 자기 표를 들면 "간식받기"와
+ * "간식 받기"처럼 갈라지고, 게임이 늘었을 때 한쪽만 고쳐진다.
+ *
+ * Record 로 둔 것은 게임이 추가되면 문구 누락을 타입이 잡게 하기 위함이다.
+ */
+const MINIGAME_TEXT: Record<MinigameId, { label: string; hint: string; unit: string }> = {
+  catch: {
+    label: '간식받기',
+    hint: '떨어지는 간식을 받아요. 폭탄은 피하고!',
+    unit: '점',
+  },
+  hop: {
+    label: '폴짝 달리기',
+    hint: '탭하면 점프, 길게 누르면 더 높이.',
+    unit: 'm',
+  },
+  echo: {
+    label: '따라하기',
+    hint: '불빛 순서를 기억해서 그대로 눌러요.',
+    unit: '라운드',
+  },
+}
+
+/**
+ * 메뉴에 뜨는 순서. 명세 §8 의 8.1 → 8.3 과 같다.
+ *
+ * **손으로 적은 배열을 두지 않고 위 표에서 뽑는다.** 배열은 원소 개수를 검사하지
+ * 않아서, 네 번째 게임이 MinigameId 에 추가되면 MINIGAME_TEXT 는 컴파일 오류로
+ * 막아 주지만 배열은 그대로 통과하고 그 게임만 메뉴에서 조용히 빠진 채 빌드된다.
+ * 객체 리터럴의 문자열 키는 적은 순서를 유지하므로 여기 순서는 위 표의 순서다.
+ */
+const MINIGAME_ORDER = Object.keys(MINIGAME_TEXT) as MinigameId[]
+
+/**
+ * 놀이터 흐름의 현재 자리.
+ *
+ * 셋을 한 값으로 두면 "메뉴를 띄운 채 게임이 돌고 있다" 같은 조합이 아예
+ * 만들어지지 않는다. 놀고 있지 않으면 null 이다.
+ */
+type PlayPhase =
+  | { kind: 'menu' }
+  | { kind: 'playing'; game: MinigameId }
+  | { kind: 'result'; game: MinigameId; score: number; settlement: Settlement }
+
 interface ToastState {
   /** 같은 문구가 연달아 떠도 타이머가 새로 돌게 하는 값. Toast 의 key 로 쓴다. */
   id: number
@@ -64,7 +117,19 @@ interface ToastState {
 }
 
 export default function App() {
-  const { save, report, recovered, persistError, start, act, jump, grant, dismissReport } = usePet()
+  const {
+    save,
+    report,
+    recovered,
+    persistError,
+    start,
+    act,
+    checkPlay,
+    finishGame,
+    jump,
+    grant,
+    dismissReport,
+  } = usePet()
   const gameRef = useRef<PetGame | null>(null)
 
   // 현재 방은 **세이브에 넣지 않는다.** 명세 §10 의 스키마에 없는 필드이고,
@@ -74,6 +139,7 @@ export default function App() {
   const room = roomAt(cursor)
 
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [phase, setPhase] = useState<PlayPhase | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const toastSeq = useRef(0)
 
@@ -100,6 +166,19 @@ export default function App() {
   useEffect(() => {
     gameRef.current?.setRoom(room.id)
   }, [room.id])
+
+  /**
+   * 코인을 벌어 왔으면 펫이 기뻐한다.
+   *
+   * handleEnd 안에서 부르지 않는 이유: 게임이 도는 동안에는 방 캔버스가 아예
+   * 마운트되어 있지 않아 gameRef 가 비어 있다. 결과 화면으로 바뀌는 커밋에서
+   * 방이 다시 붙고, 자식 effect 가 부모보다 먼저 도므로 여기서는 gameRef 가 차 있다.
+   */
+  useEffect(() => {
+    if (phase?.kind !== 'result') return
+    if (phase.settlement.coins <= 0) return
+    gameRef.current?.bounce()
+  }, [phase])
 
   const dismissToast = useCallback(() => setToast(null), [])
 
@@ -140,10 +219,31 @@ export default function App() {
       setSheetOpen(true)
       return
     }
-    // 놀이터·상점 버튼은 비활성이라 여기까지 오지 않는다(ActionBar).
-    if (id === 'play' || id === 'shop') return
+    // 미니게임도 마찬가지다. 어느 게임을 할지 먼저 고른다.
+    if (id === 'play') {
+      setPhase({ kind: 'menu' })
+      return
+    }
+    // 상점 버튼은 아직 비활성이라 여기까지 오지 않는다(ActionBar).
+    if (id === 'shop') return
 
     run(id === 'sleep' && save.sleep !== null ? 'wake' : id)
+  }
+
+  /**
+   * 판이 끝났다. 정산하고 결과 카드로 넘어간다.
+   *
+   * 에너지 차감도 보상 지급도 finishGame 한 번에 들어 있다. 여기서 코인을 더하는
+   * 코드를 쓰면 규칙이 화면으로 새어 나오고, 서버 검증(2단계)에 옮겨 쓸 수 없게 된다.
+   */
+  const handleEnd = (game: MinigameId, score: number) => {
+    const settlement = finishGame(game, score)
+    if (!settlement) {
+      setPhase(null)
+      return
+    }
+
+    setPhase({ kind: 'result', game, score, settlement })
   }
 
   const handlePick = (food: FoodId) => {
@@ -172,7 +272,16 @@ export default function App() {
     </div>
   )
 
-  const footer = (
+  const playing = phase !== null && phase.kind === 'playing' ? phase : null
+
+  /**
+   * 게임 중에는 액션 바를 내린다.
+   *
+   * 한 손으로 하는 게임이라 화면 아래가 곧 조작 영역이다. 그 자리에 먹이주기가
+   * 남아 있으면 점프하려다 밥을 준다. 세로 공간이 캔버스로 돌아가는 것도 이득이다
+   * — 도트는 중간 배율이 없어 몇 px 이 배율 한 단계를 가른다(§14 의 M2 기록).
+   */
+  const footer = playing ? null : (
     <div className="pt-footer">
       <ActionBar actions={room.actions} sleeping={save.sleep !== null} onAction={handleAction} />
 
@@ -216,17 +325,32 @@ export default function App() {
 
   return (
     <div className="pt-root" style={PALETTE_STYLE}>
+      {/* 미니게임 중에도 HUD 를 켜 둔다. 한 번 접어 봤는데, 스테이지가 이미 642px
+          이라 배율은 그대로 2 이면서 위아래 검은 띠만 172px 로 늘어났다. 같은
+          자리를 비워 두느니 기운·배고픔을 보여주는 편이 낫다 — 판을 더 할 수
+          있는지가 그 숫자로 결정된다. */}
       <GameShell header={header} footer={footer}>
         <div className="pt-stage">
-          <RoomNav
-            room={room}
-            prevLabel={roomAt(cursor - 1).label}
-            nextLabel={roomAt(cursor + 1).label}
-            onPrev={() => setCursor((at) => at - 1)}
-            onNext={() => setCursor((at) => at + 1)}
-          >
-            <GameCanvas onMount={handleMount} />
-          </RoomNav>
+          {/* 게임 중에는 방 캔버스를 통째로 내린다. 겹쳐 두면 보이지도 않는 방
+              루프가 계속 돌고, 캔버스 두 장이 같은 화면에서 배율을 다투게 된다.
+              내리면 PetGame.destroy 가 불려 루프와 리스너가 확실히 정리된다. */}
+          {playing ? (
+            <MinigameScreen
+              game={playing.game}
+              onEnd={(score) => handleEnd(playing.game, score)}
+              onExit={() => setPhase(null)}
+            />
+          ) : (
+            <RoomNav
+              room={room}
+              prevLabel={roomAt(cursor - 1).label}
+              nextLabel={roomAt(cursor + 1).label}
+              onPrev={() => setCursor((at) => at - 1)}
+              onNext={() => setCursor((at) => at + 1)}
+            >
+              <GameCanvas onMount={handleMount} />
+            </RoomNav>
+          )}
 
           {/* 저장이 막혀 있으면 알린다. 조용히 두면 진행이 남는다고 믿은 채 계속 논다. */}
           {persistError ? (
@@ -244,7 +368,15 @@ export default function App() {
             />
           ) : null}
 
-          {sheetOpen ? (
+          {/* 방 화면의 덮개는 게임 중에 띄우지 않는다. 이것들은 inset:0 에
+              배경까지 깔린 판이라 캔버스 위에 얹히는 순간 게임이 보이지도,
+              눌리지도 않게 된다 — 그런데 게임 루프는 그대로 돌아서 그 판은
+              혼자 진행되어 정산까지 간다. 특히 복귀 카드는 사용자가 부르지
+              않았는데도 뜬다: 게임 도중 화면을 껐다가 4시간 뒤에 켜면
+              visibilitychange 가 경과 리포트를 만들고, 같은 순간 GameLoop 이
+              스스로 다시 돌기 시작한다. 리포트는 버리지 않고 들고 있다가 판이
+              끝난 뒤에 보여준다. */}
+          {playing === null && sheetOpen ? (
             <InventorySheet
               inventory={save.inventory}
               onPick={handlePick}
@@ -252,7 +384,38 @@ export default function App() {
             />
           ) : null}
 
-          {report && shouldShowWelcomeBack(report) ? (
+          {phase !== null && phase.kind === 'menu' ? (
+            <PlayMenu
+              items={MINIGAME_ORDER.map((id) => {
+                const text = MINIGAME_TEXT[id]
+                const verdict = checkPlay(id)
+                return {
+                  id,
+                  label: text.label,
+                  hint: text.hint,
+                  ok: verdict.ok,
+                  reason: verdict.reason,
+                }
+              })}
+              onPick={(game) => setPhase({ kind: 'playing', game })}
+              onClose={() => setPhase(null)}
+            />
+          ) : null}
+
+          {phase !== null && phase.kind === 'result' ? (
+            <ResultCard
+              label={MINIGAME_TEXT[phase.game].label}
+              unit={MINIGAME_TEXT[phase.game].unit}
+              score={phase.score}
+              settlement={phase.settlement}
+              // 한 판 더는 메뉴로 돌아간다. 같은 게임을 곧바로 다시 시작하면
+              // 기운이 모자라 못 들어가는 경우에 갈 곳이 없어진다.
+              onAgain={() => setPhase({ kind: 'menu' })}
+              onClose={() => setPhase(null)}
+            />
+          ) : null}
+
+          {playing === null && report && shouldShowWelcomeBack(report) ? (
             <WelcomeBackCard report={report} petName={save.pet.name} onClose={dismissReport} />
           ) : null}
         </div>

@@ -5,7 +5,23 @@
 // 배포에서만 404 가 난다.
 
 import itemAppleUrl from '../assets/item-apple.png'
+import itemBreadUrl from '../assets/item-bread.png'
+import itemCakeUrl from '../assets/item-cake.png'
+import itemCandyUrl from '../assets/item-candy.png'
+import itemCheeseUrl from '../assets/item-cheese.png'
+import itemCookieUrl from '../assets/item-cookie.png'
+import itemDonutUrl from '../assets/item-donut.png'
+import itemMilkUrl from '../assets/item-milk.png'
+import itemOrangeUrl from '../assets/item-orange.png'
+import itemStrawberryUrl from '../assets/item-strawberry.png'
+import itemWatermelonUrl from '../assets/item-watermelon.png'
 import petUrl from '../assets/pet.png'
+import propBirdUrl from '../assets/prop-bird.png'
+import propBombUrl from '../assets/prop-bomb.png'
+import propCactusSmallUrl from '../assets/prop-cactus-small.png'
+import propCactusTallUrl from '../assets/prop-cactus-tall.png'
+import propCrateUrl from '../assets/prop-crate.png'
+import propDonutUrl from '../assets/prop-donut.png'
 import roomBathUrl from '../assets/room-bath.png'
 import roomBedUrl from '../assets/room-bed.png'
 import roomKitchenUrl from '../assets/room-kitchen.png'
@@ -35,6 +51,87 @@ const ROOM_ASSET_URLS: Record<string, string> = {
 }
 
 /**
+ * 미니게임과 인벤토리가 쓰는 48×48 물건들.
+ *
+ * **키는 파일 이름 그대로다**(`item-apple`). 접두사를 떼고 `apple` 로 두면
+ * 아이템의 `donut` 과 소품의 `donut` 이 같은 이름이 되는데, 간식받기에서 그 둘은
+ * 점수 +1 과 +5 로 전혀 다른 물건이다. 방 배경(`room-living`)도 같은 규칙이라
+ * 세 표의 키 모양이 하나로 맞는다.
+ *
+ * 이름 배열을 먼저 두고 표를 `Record<ItemSpriteName, string>` 으로 선언하는 것은
+ * 빠뜨림을 컴파일 타임에 잡기 위해서다. 표만 두면 이름 하나를 빠뜨려도 그 물건이
+ * 떨어지는 순간에야 undefined 로 터진다.
+ */
+export const ITEM_SPRITE_NAMES = [
+  'item-apple',
+  'item-bread',
+  'item-cake',
+  'item-candy',
+  'item-cheese',
+  'item-cookie',
+  'item-donut',
+  'item-milk',
+  'item-orange',
+  'item-strawberry',
+  'item-watermelon',
+] as const
+
+export type ItemSpriteName = (typeof ITEM_SPRITE_NAMES)[number]
+
+const ITEM_ASSET_URLS: Record<ItemSpriteName, string> = {
+  'item-apple': itemAppleUrl,
+  'item-bread': itemBreadUrl,
+  'item-cake': itemCakeUrl,
+  'item-candy': itemCandyUrl,
+  'item-cheese': itemCheeseUrl,
+  'item-cookie': itemCookieUrl,
+  'item-donut': itemDonutUrl,
+  'item-milk': itemMilkUrl,
+  'item-orange': itemOrangeUrl,
+  'item-strawberry': itemStrawberryUrl,
+  'item-watermelon': itemWatermelonUrl,
+}
+
+/**
+ * 미니게임 소품. 세 게임이 나눠 쓴다.
+ *
+ * - 간식받기: `prop-bomb`(라이프 -1) · `prop-donut`(황금 도넛 +5)
+ * - 폴짝 달리기: `prop-cactus-small` · `prop-cactus-tall` · `prop-crate` ·
+ *   `prop-bird`
+ *
+ * 게임마다 쓰는 것만 따로 불러오지 않는 이유: 미니게임은 방 화면에서 곧바로
+ * 시작되는데, 그 순간에 다시 네트워크를 기다리면 첫 프레임이 비어 뜬다. 48×48
+ * PNG 여섯 장은 방 배경 한 장보다도 가볍다.
+ */
+export const PROP_SPRITE_NAMES = [
+  'prop-bird',
+  'prop-bomb',
+  'prop-cactus-small',
+  'prop-cactus-tall',
+  'prop-crate',
+  'prop-donut',
+] as const
+
+export type PropSpriteName = (typeof PROP_SPRITE_NAMES)[number]
+
+const PROP_ASSET_URLS: Record<PropSpriteName, string> = {
+  'prop-bird': propBirdUrl,
+  'prop-bomb': propBombUrl,
+  'prop-cactus-small': propCactusSmallUrl,
+  'prop-cactus-tall': propCactusTallUrl,
+  'prop-crate': propCrateUrl,
+  'prop-donut': propDonutUrl,
+}
+
+/**
+ * 아이템·소품 스프라이트의 한 변(px).
+ *
+ * 파이프라인이 전부 48×48 로 뽑는다(명세 §12.1). 충돌 상자를 만들 때 이 값을
+ * 쓰라고 상수로 둔다 — 게임마다 48 을 손으로 적으면 크기를 바꿀 때 한 곳만 남는다.
+ */
+export const PROP_SPRITE_SIZE = 48
+
+/**
  * 한 벌로 다 불러온 스프라이트.
  *
  * 하나씩 도착하는 대로 그리지 않는다. 방만 있고 펫이 없는 중간 상태가 화면에
@@ -45,6 +142,14 @@ export interface SpriteSet {
   /** rooms.ts 의 `RoomDef.asset` 이름으로 찾는다. ROOMS 의 모든 방이 반드시 들어 있다. */
   readonly rooms: Record<string, HTMLImageElement>
   readonly pet: HTMLImageElement
+  /** `item-apple` 처럼 파일 이름 그대로가 키다. */
+  readonly items: Readonly<Record<ItemSpriteName, HTMLImageElement>>
+  /** `prop-bomb` 처럼 파일 이름 그대로가 키다. */
+  readonly props: Readonly<Record<PropSpriteName, HTMLImageElement>>
+  /**
+   * `items['item-apple']` 과 같은 이미지다. 표가 생기기 전부터 있던 이름이라
+   * 남겨 둔다 — 같은 파일을 두 번 내려받지는 않는다.
+   */
   readonly itemApple: HTMLImageElement
 }
 
@@ -56,6 +161,9 @@ export interface SpriteSet {
  * 한가운데(64)가 아니라 55 이고, 발바닥도 127 이 아니라 121 이다. 스프라이트를
  * 그냥 가운데 정렬해 그리면 펫이 오른쪽으로 9px 밀려 서고, 바닥선에 맞추면
  * 6px 떠 보인다. 에셋을 다시 뽑으면 이 값도 다시 재야 한다.
+ *
+ * body* 는 같은 측정에서 나온 경계 상자 그대로다. 미니게임의 충돌 상자가 이
+ * 값을 쓴다 — 128×128 전체를 상자로 잡으면 펫 옆의 빈 공간에서 폭탄이 터진다.
  */
 export const PET_SPRITE = {
   width: 128,
@@ -64,6 +172,14 @@ export const PET_SPRITE = {
   feetY: 122,
   /** 불투명 영역의 가로 중심. */
   centerX: 55,
+  /** 불투명 영역의 왼쪽 끝(스프라이트 좌표). */
+  bodyLeft: 5,
+  /** 불투명 영역의 위쪽 끝(스프라이트 좌표). */
+  bodyTop: 7,
+  /** 불투명 영역의 폭(5~105 이므로 101 이다). */
+  bodyWidth: 101,
+  /** 불투명 영역의 높이(7~121 이므로 115 다). */
+  bodyHeight: 115,
 } as const
 
 function loadImage(name: string, url: string): Promise<HTMLImageElement> {
@@ -78,6 +194,23 @@ function loadImage(name: string, url: string): Promise<HTMLImageElement> {
 
     image.src = url
   })
+}
+
+/** 이름 목록을 그대로 키로 쓰는 이미지 표를 만든다. 한 장이라도 실패하면 reject 된다. */
+async function loadTable<Name extends string>(
+  names: readonly Name[],
+  urlOf: (name: Name) => string,
+): Promise<Record<Name, HTMLImageElement>> {
+  const images = await Promise.all(names.map((name) => loadImage(name, urlOf(name))))
+
+  // 빈 객체에서 시작해 채운다. Object.fromEntries 는 결과 타입이 넓어져
+  // 키가 하나 빠져도 컴파일러가 잡지 못한다.
+  const table = {} as Record<Name, HTMLImageElement>
+  names.forEach((name, index) => {
+    table[name] = images[index]
+  })
+
+  return table
 }
 
 /**
@@ -101,20 +234,14 @@ function roomAssetNames(): string[] {
 }
 
 async function loadAll(): Promise<SpriteSet> {
-  const names = roomAssetNames()
-
-  const [pet, itemApple, ...roomImages] = await Promise.all([
+  const [pet, rooms, items, props] = await Promise.all([
     loadImage('pet', petUrl),
-    loadImage('item-apple', itemAppleUrl),
-    ...names.map((name) => loadImage(name, ROOM_ASSET_URLS[name])),
+    loadTable(roomAssetNames(), (name) => ROOM_ASSET_URLS[name]),
+    loadTable(ITEM_SPRITE_NAMES, (name) => ITEM_ASSET_URLS[name]),
+    loadTable(PROP_SPRITE_NAMES, (name) => PROP_ASSET_URLS[name]),
   ])
 
-  const rooms: Record<string, HTMLImageElement> = {}
-  names.forEach((name, index) => {
-    rooms[name] = roomImages[index]
-  })
-
-  return { rooms, pet, itemApple }
+  return { rooms, pet, items, props, itemApple: items['item-apple'] }
 }
 
 let pending: Promise<SpriteSet> | null = null

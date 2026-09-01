@@ -5,6 +5,9 @@ import type { LoadResult } from './game/pet/save'
 import { createSave, loadSave, writeSave } from './game/pet/save'
 import type { ActionOutcome } from './game/pet/actions'
 import { feed, grantItem, pat, startSleep, wakeUp, wash } from './game/pet/actions'
+import type { MinigameId } from './game/pet/economy'
+import type { PlayCheck, Settlement } from './game/pet/minigames'
+import { canPlay, settle } from './game/pet/minigames'
 
 /**
  * 세이브를 들고 있는 유일한 곳.
@@ -68,6 +71,20 @@ export interface UsePetResult {
    * 화면이 다시 판단하지 않는다 — 규칙은 actions.ts 한 곳에만 있다.
    */
   act: (kind: ActionKind, food?: FoodId) => ActionOutcome | null
+  /**
+   * 지금 이 미니게임에 들어갈 수 있는가. 막히면 이유가 문장으로 들어 있다.
+   *
+   * 화면이 에너지를 직접 비교하지 않게 하려고 훅이 대신 물어봐 준다. 조건이 두
+   * 곳에 적히면 "버튼은 눌리는데 정산이 거절하는" 상태가 만들어진다.
+   */
+  checkPlay: (game: MinigameId) => PlayCheck
+  /**
+   * 한 판이 끝났다. 에너지 차감과 보상 지급이 여기서 한 번에 일어난다.
+   *
+   * 결과를 그대로 돌려주므로 화면은 그 값을 카드에 옮기기만 하면 된다. 세이브가
+   * 아직 없으면(이름 입력 전) null 이다.
+   */
+  finishGame: (game: MinigameId, score: number) => Settlement | null
   /** 개발 전용 시간 점프. M1 완료 기준을 손으로 확인하는 수단이다. */
   jump: (ms: number) => void
   /** 개발 전용 물건 지급. 상점·튜토리얼(M4)이 없어 음식을 얻을 길이 없다. */
@@ -280,6 +297,46 @@ export function usePet(): UsePetResult {
     [commit],
   )
 
+  /**
+   * 진입 가능 여부.
+   *
+   * saveRef 가 아니라 save 상태를 보는 이유는 이 함수가 렌더 중에 불리기
+   * 때문이다. 메뉴는 매 렌더 이 값을 다시 물어보므로, 에너지가 바뀌면 버튼도
+   * 함께 갱신되어야 한다.
+   */
+  const checkPlay = useCallback(
+    (game: MinigameId): PlayCheck => {
+      if (!save) return { ok: false, reason: '아직 펫이 없어요.' }
+      return canPlay(save, game)
+    },
+    [save],
+  )
+
+  /**
+   * 미니게임 정산.
+   *
+   * **돌봄 액션과 똑같이 정산 직전에 applyElapsed 를 지난다.** 한 판이 1분 넘게
+   * 걸릴 수 있어서(간식받기 60초), 게임을 시작할 때의 스탯으로 정산하면 그동안의
+   * 감소가 통째로 사라진다. 배고픔 0 벌칙(§4)은 판이 끝난 시점의 배고픔으로
+   * 판정되어야 하므로 순서도 이쪽이 맞다.
+   *
+   * 리포트는 버린다. 복귀 카드는 화면에 들어오는 순간에만 뜬다 — 게임이 끝날
+   * 때마다 "12시간 만이야!"가 뜨면 안 된다.
+   */
+  const finishGame = useCallback(
+    (game: MinigameId, score: number): Settlement | null => {
+      const current = saveRef.current
+      if (!current) return null
+
+      const now = Date.now()
+      const fresh = applyElapsed(current, now)
+      const settlement = settle(fresh.next, game, score, now)
+      commit(settlement.next, null)
+      return settlement
+    },
+    [commit],
+  )
+
   const jump = useCallback(
     (ms: number) => {
       const current = saveRef.current
@@ -325,5 +382,17 @@ export function usePet(): UsePetResult {
 
   const dismissReport = useCallback(() => setReport(null), [])
 
-  return { save, report, recovered, persistError, start, act, jump, grant, dismissReport }
+  return {
+    save,
+    report,
+    recovered,
+    persistError,
+    start,
+    act,
+    checkPlay,
+    finishGame,
+    jump,
+    grant,
+    dismissReport,
+  }
 }
