@@ -12,8 +12,12 @@
 
 import { GameLoop, PointerInput } from '@gujuck/game-core'
 import { PALETTE_DARKEST, paletteCss } from '../palette'
-import { PET_SPRITE } from '../sprites'
+import { PET_METRICS } from '../sprites'
 import type { PropSpriteName } from '../sprites'
+// 앱 안에 play 가 둘이다 — 효과음(sound.play)과 배경음악(music.play). 이름만
+// 가져오면 호출부에서 어느 쪽인지 드러나지 않는다. App.tsx 가 같은 이유로 통째로
+// 가져온다.
+import * as sound from '../sound'
 import { GAME_HEIGHT, GAME_WIDTH, PixelStage } from './pixelStage'
 import type { MinigameHost } from './types'
 
@@ -31,20 +35,32 @@ import type { MinigameHost } from './types'
 const GROUND_Y = 464
 
 /**
- * 펫 히트박스의 왼쪽·크기.
+ * 펫 히트박스의 가로 중심·크기. **성장 단계와 무관하게 이 값 하나를 쓴다.**
  *
  * **그림보다 좁고 낮게 잡는다.** 펫 스프라이트의 불투명 폭은 아랫배에서 100px 나
  * 되는데(sprites.ts 의 실측), 그 폭을 그대로 판정에 쓰면 저속에서 최대 점프로도
  * 높은 선인장을 넘지 못하는 구간이 생긴다 — 느릴수록 장애물 옆에 머무는 시간이
  * 길어지기 때문이다. 60px 은 발치 실루엣(발바닥 근처 45~76px)에 맞춘 값이다.
  * 높이 96 은 펫 키 115 보다 낮은데, 이것이 "서 있으면 새 밑을 지나간다"를 만든다.
+ *
+ * **단계별로 줄이지 않는다**(명세 §6 "외형만 바뀌고 능력 차이는 없다"). 그림
+ * 크기를 곱하면 아기의 상자가 38×60 이 되어 같은 장애물에 덜 걸린다 — 외형이
+ * 곧 난이도가 되고, 새(아래변 132)도 아기만 72px 까지 뛰어도 지나가게 된다.
+ * 상자가 그림보다 좁은 것은 원래 이 게임의 규칙이고(위 문단), 60 은 가장 작은
+ * 아기(불투명 폭 63)보다도 좁아서 어느 단계에서도 그림 밖으로 나가지 않는다.
+ * 간격 계산(minGapPx)의 안전 여유도 이 하나의 상자로 유도한 값 그대로다.
+ *
+ * 중심을 기준으로 두는 것은 단계가 바뀌어도 펫이 화면의 같은 자리에 서 있게
+ * 하기 위해서다. 왼쪽을 고정하면 아기가 화면 왼쪽으로 12px 붙어 선다.
+ * 70 은 M4 까지 쓰던 어른 전제값 그대로다 — 왼쪽 PET_X 40 + 폭 60 의 절반이라,
+ * 기준을 중심으로 바꾸면서도 펫이 서 있는 자리는 움직이지 않는다.
  */
-const PET_X = 40
+const PET_CENTER_X = 70
 const PET_HIT_W = 60
 const PET_HIT_H = 96
 
-/** 스프라이트를 그릴 x. 불투명 영역의 가로 중심(centerX)을 히트박스 중앙에 맞춘다. */
-const PET_DRAW_X = PET_X + PET_HIT_W / 2 - PET_SPRITE.centerX
+/** 히트박스 왼쪽 변. 중심에서 유도한다 — 둘을 따로 적으면 한쪽만 고쳐진다. */
+const PET_LEFT = PET_CENTER_X - PET_HIT_W / 2
 
 /** 장애물이 나타나는 x. 화면 오른쪽 바로 밖이다. */
 const SPAWN_X = GAME_WIDTH + 4
@@ -317,9 +333,23 @@ export class HopGame {
   private over = false
   private hitSec = 0
 
+  /**
+   * 이 판에서 펫을 그리는 x 와 발밑 줄. 판이 도는 동안 단계는 바뀌지 않으므로 한 번만 잰다.
+   *
+   * 히트박스는 단계와 무관한 상수라 여기 없다(PET_HIT_W · PET_HIT_H). **크기에
+   * 따라 달라지는 것은 그림뿐이다.**
+   */
+  private readonly petDrawX: number
+  private readonly petFeetY: number
+
   constructor(host: MinigameHost) {
     this.host = host
     this.pixels = new PixelStage(host.stage)
+
+    const metrics = PET_METRICS[host.petStage]
+    // 정수로 반올림한다. 그리는 x 가 소수가 되면 도트가 뭉개진다(§12.3).
+    this.petDrawX = Math.round(PET_CENTER_X - metrics.centerX)
+    this.petFeetY = metrics.feetY
 
     this.spawnCountdownPx = minGapPx(BASE_SPEED) * FIRST_GAP_FACTOR
 
@@ -400,6 +430,8 @@ export class HopGame {
     this.vy = JUMP_V0
     this.holdSec = 0
     this.bufferSec = 0
+    // 올라가는 음이다. 이 게임에서 점프는 언제나 "됐다"이므로(§12.13).
+    sound.play('jump')
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -499,7 +531,9 @@ export class HopGame {
   private spawnDust(count: number, upward: number): void {
     for (let i = 0; i < count; i += 1) {
       this.dust.push({
-        x: PET_X + Math.random() * PET_HIT_W,
+        // 먼지는 히트박스 폭 안에서 튄다. 상자가 어느 단계에서도 그림보다 좁으므로
+        // (PET_HIT_W 주석) 먼지가 발 옆의 빈 땅에서 이는 일은 없다.
+        x: PET_LEFT + Math.random() * PET_HIT_W,
         y: GROUND_Y - upward - Math.random() * 4,
         // 세계가 흐르는 방향으로 함께 뒤로 흩어져야 바닥을 딛은 것처럼 보인다.
         vx: -this.speed * 0.3 + (Math.random() - 0.5) * 60,
@@ -524,8 +558,8 @@ export class HopGame {
 
   /** 사각형 겹침(AABB)만 본다. 회전도 곡면도 없으므로 이 이상이 필요 없다(§8). */
   private collides(): boolean {
-    const petLeft = PET_X
-    const petRight = PET_X + PET_HIT_W
+    const petLeft = PET_LEFT
+    const petRight = petLeft + PET_HIT_W
     const petBottom = GROUND_Y - this.lift
     const petTop = petBottom - PET_HIT_H
 
@@ -543,6 +577,7 @@ export class HopGame {
     this.hitSec = 0
     this.holdActive = false
     this.spawnDust(HIT_DUST_COUNT, 24)
+    sound.play('hit')
   }
 
   private finish(): void {
@@ -672,10 +707,15 @@ export class HopGame {
     const blinking = this.over && this.hitSec < HIT_FREEZE_SEC
     if (blinking && Math.floor(this.hitSec / HIT_BLINK_SEC) % 2 === 1) return
 
+    // 부딪힌 뒤에는 시무룩한 얼굴로 끝난다. 멀쩡한 얼굴로 멈춰 서 있으면 판이
+    // 왜 끝났는지가 펫에게서는 읽히지 않는다. 기분 0 도 같은 자리다 —
+    // 이유는 CatchGame 의 같은 줄에 적어 두었다(face.ts 의 우선순위).
+    const face = this.over || this.host.moodZero ? 'sad' : 'base'
+
     this.pixels.drawSprite(
-      this.host.sprites.pet,
-      PET_DRAW_X,
-      GROUND_Y - PET_SPRITE.feetY - Math.round(this.lift),
+      this.host.sprites.pets[this.host.petStage][face],
+      this.petDrawX,
+      GROUND_Y - this.petFeetY - Math.round(this.lift),
     )
   }
 

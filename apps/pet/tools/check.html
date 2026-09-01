@@ -109,15 +109,42 @@
     <h2>합성 — 세 장이 한 세트로 보이는가 (논리 360×640 을 ×2 로)</h2>
     <div class="stage">
       <img class="room" src="out-room.png" alt="방" />
-      <img class="pet" src="out-pet.png" alt="펫" />
+      <img class="pet" src="out-pet-adult.png" alt="펫" />
       <img class="item" src="out-item.png" alt="아이템" />
+    </div>
+
+    <!--
+      성장 3단계는 같은 원본을 세 크기로 줄인 것이다(명세 §12.11). 나란히 두는
+      이유는 크기 차이가 읽히는지, 그리고 세 장의 외곽선 두께가 같은지를 한눈에
+      보기 위해서다 — 80px 에서 선이 두꺼워 보이면 그 단계만 다시 뽑아야 한다.
+      배율은 ×2 로 통일한다. 배율이 다르면 크기 비교 자체가 무의미해진다.
+    -->
+    <h2>성장 3단계 — 아기 80 / 어린이 104 / 어른 128 (전부 ×2)</h2>
+    <div class="row">
+      <img class="cell" src="out-pet-baby.png" width="160" alt="아기 ×2" />
+      <img class="cell" src="out-pet-child.png" width="208" alt="어린이 ×2" />
+      <img class="cell" src="out-pet-adult.png" width="256" alt="어른 ×2" />
+    </div>
+
+    <!--
+      faces.mjs 가 만드는 것이 곧 이 줄이 판정해야 할 대상이다(명세 §12.12).
+      눈썹이 반대로 기울어 화난 얼굴이 되거나, 입 대신 팔 주름이 잡히는 실패가
+      실제로 있었다. 어른만 두는 것은 셋이 같은 자리에서 유도되기 때문이다 —
+      어른이 맞으면 나머지 둘은 비례로 옮긴 것뿐이다(`--reference`).
+    -->
+    <h2>표정 4종 (어른 ×2) — 기본 / 눈 감음 / 시무룩 / 입 벌림</h2>
+    <div class="row">
+      <img class="cell" src="out-pet-adult.png" width="256" alt="기본" />
+      <img class="cell" src="out-pet-adult-blink.png" width="256" alt="눈 감음" />
+      <img class="cell" src="out-pet-adult-sad.png" width="256" alt="시무룩" />
+      <img class="cell" src="out-pet-adult-open.png" width="256" alt="입 벌림" />
     </div>
 
     <h2>펫 — ×1 / ×2 / ×4</h2>
     <div class="row">
-      <img class="cell" src="out-pet.png" width="128" alt="펫 ×1" />
-      <img class="cell" src="out-pet.png" width="256" alt="펫 ×2" />
-      <img class="cell" src="out-pet.png" width="512" alt="펫 ×4" />
+      <img class="cell" src="out-pet-adult.png" width="128" alt="펫 ×1" />
+      <img class="cell" src="out-pet-adult.png" width="256" alt="펫 ×2" />
+      <img class="cell" src="out-pet-adult.png" width="512" alt="펫 ×4" />
     </div>
 
     <h2>아이템 — ×2 / ×4 / ×8</h2>
@@ -134,6 +161,9 @@
       <li>세 장의 외곽선 두께와 색 온도가 같은가. 하나만 튀면 그 에셋만 다시 뽑는다.</li>
       <li>벽·바닥에 흩뿌려진 점이 없는가. 있으면 <code>--despeckle</code> 을 켠다.</li>
       <li>어두운 배경으로 바꿔도 밝은 에셋의 가장자리가 사라지지 않는가.</li>
+      <li>세 단계가 크기만 다른 같은 펫으로 보이는가. 외곽선 두께가 셋 다 같은가.</li>
+      <li>처진 눈썹이 <strong>바깥쪽이 아래</strong>인가. 안쪽이 내려가면 화난 얼굴이다.</li>
+      <li>입 벌림이 입 자리에 있는가. 옆구리에 검은 덩어리가 생겼으면 팔 주름을 잡은 것이다.</li>
     </ul>
   </body>
 </html>

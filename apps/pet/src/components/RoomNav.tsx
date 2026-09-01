@@ -131,11 +131,13 @@ export function RoomNav({
         aria-label={`이전 방: ${prevLabel}${prevLocked ? ' (잠김)' : ''}`}
       >
         <span aria-hidden="true">◀</span>
-        {prevLocked ? (
-          <span className="pt-roomnav__lock" aria-hidden="true">
-            🔒
-          </span>
-        ) : null}
+        {/* 옆에 무엇이 있는지 모른 채 누르게 두지 않는다. 이름을 보여 주면
+            "어디로 갈까"가 아니라 "주방으로 갈까"가 되어 한 번에 고른다.
+            aria-label 에만 있던 정보를 눈에도 내놓는 것이다. */}
+        <span className="pt-roomnav__peek" aria-hidden="true">
+          {prevLabel}
+          {prevLocked ? ' 🔒' : ''}
+        </span>
       </button>
       <button
         type="button"
@@ -148,11 +150,10 @@ export function RoomNav({
         aria-label={`다음 방: ${nextLabel}${nextLocked ? ' (잠김)' : ''}`}
       >
         <span aria-hidden="true">▶</span>
-        {nextLocked ? (
-          <span className="pt-roomnav__lock" aria-hidden="true">
-            🔒
-          </span>
-        ) : null}
+        <span className="pt-roomnav__peek" aria-hidden="true">
+          {nextLabel}
+          {nextLocked ? ' 🔒' : ''}
+        </span>
       </button>
     </div>
   )

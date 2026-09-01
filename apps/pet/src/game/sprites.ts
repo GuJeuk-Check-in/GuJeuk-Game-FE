@@ -24,7 +24,18 @@ import itemMilkUrl from '../assets/item-milk.png'
 import itemOrangeUrl from '../assets/item-orange.png'
 import itemStrawberryUrl from '../assets/item-strawberry.png'
 import itemWatermelonUrl from '../assets/item-watermelon.png'
-import petUrl from '../assets/pet.png'
+import petAdultUrl from '../assets/pet-adult.png'
+import petAdultBlinkUrl from '../assets/pet-adult-blink.png'
+import petAdultOpenUrl from '../assets/pet-adult-open.png'
+import petAdultSadUrl from '../assets/pet-adult-sad.png'
+import petBabyUrl from '../assets/pet-baby.png'
+import petBabyBlinkUrl from '../assets/pet-baby-blink.png'
+import petBabyOpenUrl from '../assets/pet-baby-open.png'
+import petBabySadUrl from '../assets/pet-baby-sad.png'
+import petChildUrl from '../assets/pet-child.png'
+import petChildBlinkUrl from '../assets/pet-child-blink.png'
+import petChildOpenUrl from '../assets/pet-child-open.png'
+import petChildSadUrl from '../assets/pet-child-sad.png'
 import propBirdUrl from '../assets/prop-bird.png'
 import propBombUrl from '../assets/prop-bomb.png'
 import propCactusSmallUrl from '../assets/prop-cactus-small.png'
@@ -37,8 +48,10 @@ import roomKitchenUrl from '../assets/room-kitchen.png'
 import roomLivingUrl from '../assets/room-living.png'
 import roomPlayUrl from '../assets/room-play.png'
 import roomShopUrl from '../assets/room-shop.png'
+import { petSpriteName } from './pet/face'
+import type { FaceKind } from './pet/face'
 import { ROOMS } from './rooms'
-import type { FoodId, FurnitureId } from './types'
+import type { FoodId, FurnitureId, Stage } from './types'
 
 /**
  * 방 배경 에셋 이름 → 파일 주소.
@@ -58,6 +71,54 @@ const ROOM_ASSET_URLS: Record<string, string> = {
   'room-bed': roomBedUrl,
   'room-play': roomPlayUrl,
   'room-shop': roomShopUrl,
+}
+
+/**
+ * 펫 스프라이트 12장(성장 3단계 × 표정 4종) → 파일 주소.
+ *
+ * **키는 face.ts 의 petSpriteName() 이 만드는 이름과 같은 모양이다.** 키 타입을
+ * 템플릿 리터럴로 못 박아 두어, 단계나 표정이 하나 늘면 이 표가 컴파일 오류로
+ * 먼저 막는다 — 표만 손으로 맞추면 그 조합을 처음 그리는 순간에야 undefined 로
+ * 터진다(furnitureSpriteName 과 같은 규칙이다).
+ *
+ * 이름을 여기서 다시 조립하지 않는 이유는 face.ts 가 적어 둔 그대로다: 문자열을
+ * 부르는 쪽마다 붙이면 오타가 런타임까지 살아남는다. 표의 키만 리터럴로 적고,
+ * 찾을 때는 petSpriteName() 이 만든 이름으로 찾는다(petAssetUrl).
+ */
+type PetSpriteKey = `pet-${Stage}` | `pet-${Stage}-${Exclude<FaceKind, 'base'>}`
+
+const PET_ASSET_URLS: Record<PetSpriteKey, string> = {
+  'pet-baby': petBabyUrl,
+  'pet-baby-blink': petBabyBlinkUrl,
+  'pet-baby-sad': petBabySadUrl,
+  'pet-baby-open': petBabyOpenUrl,
+  'pet-child': petChildUrl,
+  'pet-child-blink': petChildBlinkUrl,
+  'pet-child-sad': petChildSadUrl,
+  'pet-child-open': petChildOpenUrl,
+  'pet-adult': petAdultUrl,
+  'pet-adult-blink': petAdultBlinkUrl,
+  'pet-adult-sad': petAdultSadUrl,
+  'pet-adult-open': petAdultOpenUrl,
+}
+
+/**
+ * 표의 이름을 petSpriteName() 이 만든 이름으로 찾는다.
+ *
+ * petSpriteName 은 string 을 돌려주므로 좁히는 곳이 한 번은 필요하다. 그 한
+ * 곳을 여기로 모으고, 어긋나면 조용히 넘어가지 않고 로딩 시점에 죽는다 — 그림
+ * 하나가 undefined 인 채로 진행되면 그 표정이 처음 나오는 순간에야 터지고,
+ * 그때는 원인이 "표를 안 고쳤다"라는 것이 전혀 드러나지 않는다.
+ */
+function petAssetUrl(stage: Stage, face: FaceKind): string {
+  const name = petSpriteName(stage, face)
+  const url: string | undefined = PET_ASSET_URLS[name as PetSpriteKey]
+
+  if (url === undefined) {
+    throw new Error(`[sprites] 펫 스프라이트 '${name}' 이(가) PET_ASSET_URLS 에 없습니다.`)
+  }
+
+  return url
 }
 
 /**
@@ -214,48 +275,100 @@ export function furnitureIconUrl(id: FurnitureId): string {
 export interface SpriteSet {
   /** rooms.ts 의 `RoomDef.asset` 이름으로 찾는다. ROOMS 의 모든 방이 반드시 들어 있다. */
   readonly rooms: Record<string, HTMLImageElement>
-  readonly pet: HTMLImageElement
+  /**
+   * 성장 3단계 × 표정 4종. `pets[stage][face]` 로 찾는다.
+   *
+   * **12장을 한 벌로 다 불러온다.** 표정은 깜빡임처럼 0.12초짜리도 있어서, 그
+   * 순간에 내려받기 시작하면 첫 깜빡임에서 펫이 한 프레임 사라진다. 레벨업으로
+   * 단계가 바뀌는 순간도 같다 — 축하 문구가 뜨는데 펫만 없는 화면이 된다.
+   * 12장을 합쳐도 방 배경 한 장 남짓이다.
+   */
+  readonly pets: Readonly<Record<Stage, Readonly<Record<FaceKind, HTMLImageElement>>>>
   /** `item-apple` 처럼 파일 이름 그대로가 키다. */
   readonly items: Readonly<Record<ItemSpriteName, HTMLImageElement>>
   /** `prop-bomb` 처럼 파일 이름 그대로가 키다. */
   readonly props: Readonly<Record<PropSpriteName, HTMLImageElement>>
   /** `furn-plant` 처럼 파일 이름 그대로가 키다. furnitureSpriteName() 으로 찾는다. */
   readonly furniture: Readonly<Record<FurnitureSpriteName, HTMLImageElement>>
-  /**
-   * `items['item-apple']` 과 같은 이미지다. 표가 생기기 전부터 있던 이름이라
-   * 남겨 둔다 — 같은 파일을 두 번 내려받지는 않는다.
-   */
-  readonly itemApple: HTMLImageElement
 }
 
 /**
- * 펫 스프라이트(128×128) 안에서 펫이 실제로 차지하는 자리.
+ * 한 단계의 펫 스프라이트 안에서 펫이 실제로 차지하는 자리.
  *
- * **눈으로 어림한 값이 아니라 잰 값이다.** 알파 > 127 인 픽셀의 경계 상자가
- * x 5~105 · y 7~121 이었다. 그래서 불투명 영역의 가로 중심은 스프라이트
- * 한가운데(64)가 아니라 55 이고, 발바닥도 127 이 아니라 121 이다. 스프라이트를
- * 그냥 가운데 정렬해 그리면 펫이 오른쪽으로 9px 밀려 서고, 바닥선에 맞추면
- * 6px 떠 보인다. 에셋을 다시 뽑으면 이 값도 다시 재야 한다.
- *
- * body* 는 같은 측정에서 나온 경계 상자 그대로다. 미니게임의 충돌 상자가 이
- * 값을 쓴다 — 128×128 전체를 상자로 잡으면 펫 옆의 빈 공간에서 폭탄이 터진다.
+ * **눈으로 어림한 값이 아니라 잰 값이다.** 세 단계 모두 알파 > 127 인 픽셀의
+ * 경계 상자를 재서 넣었고, 같은 단계의 표정 네 장은 경계가 완전히 같다(표정
+ * 변형은 실루엣을 건드리지 않는다). 에셋을 다시 뽑으면 이 값도 다시 재야 한다.
  */
-export const PET_SPRITE = {
-  width: 128,
-  height: 128,
-  /** 발바닥 바로 아래 줄. 이 줄이 바닥선에 닿게 그린다. */
-  feetY: 122,
-  /** 불투명 영역의 가로 중심. */
-  centerX: 55,
+export interface PetMetrics {
+  /** 스프라이트 한 변(px). 정사각형이다. */
+  readonly size: number
+  /** 발바닥 바로 아래 줄. 이 줄이 방의 바닥선(anchor.y)에 닿게 그린다. */
+  readonly feetY: number
+  /** 불투명 영역의 가로 중심. 스프라이트 한가운데가 아니다. */
+  readonly centerX: number
   /** 불투명 영역의 왼쪽 끝(스프라이트 좌표). */
-  bodyLeft: 5,
+  readonly bodyLeft: number
   /** 불투명 영역의 위쪽 끝(스프라이트 좌표). */
-  bodyTop: 7,
-  /** 불투명 영역의 폭(5~105 이므로 101 이다). */
-  bodyWidth: 101,
-  /** 불투명 영역의 높이(7~121 이므로 115 다). */
-  bodyHeight: 115,
-} as const
+  readonly bodyTop: number
+  readonly bodyWidth: number
+  readonly bodyHeight: number
+}
+
+/**
+ * 성장 3단계의 실측값(명세 §6 · §12.11).
+ *
+ * **단계마다 스프라이트 크기가 다르다**(80 · 104 · 128). 그래서 화면이 쓰는 값은
+ * 상수 하나가 아니라 단계별 표다. 어른 값 하나만 들고 그리면 아기는 바닥에
+ * 46px 파묻히고 가로로 21px 밀려 선다 — 발밑 기준(feetY)과 가로 중심(centerX)이
+ * 둘 다 크기에 따라 다르기 때문이다.
+ *
+ * 어른의 값이 예전 PET_SPRITE 와 같은 것은 우연이 아니라 같은 그림이라서다.
+ * 세 장은 같은 원본을 세 크기로 뽑은 것이고(§12.11), 그래서 크기 비가 곧
+ * 좌표 비다 — petScale() 이 그 사실을 쓴다.
+ */
+export const PET_METRICS: Record<Stage, PetMetrics> = {
+  baby: {
+    size: 80,
+    feetY: 76,
+    centerX: 34,
+    bodyLeft: 3,
+    bodyTop: 4,
+    bodyWidth: 63,
+    bodyHeight: 72,
+  },
+  child: {
+    size: 104,
+    feetY: 99,
+    // 실측 중심은 44.5 다(4~85). 정수만 쓰므로 내림한다 — 도트를 소수 좌표에
+    // 그리면 뭉개진다(§12.3). 0.5px 은 어느 쪽으로 접어도 눈에 띄지 않는다.
+    centerX: 44,
+    bodyLeft: 4,
+    bodyTop: 6,
+    bodyWidth: 82,
+    bodyHeight: 93,
+  },
+  adult: {
+    size: 128,
+    feetY: 122,
+    centerX: 55,
+    bodyLeft: 5,
+    bodyTop: 7,
+    bodyWidth: 101,
+    bodyHeight: 115,
+  },
+}
+
+/**
+ * 어른 기준으로 잡아 둔 값을 이 단계로 옮기는 배수.
+ *
+ * 미니게임의 밸런싱 상수(펫 히트박스 등)는 전부 어른 크기에서 맞춘 값이다.
+ * 세 단계가 **같은 그림의 크기만 다른 것**이므로(§12.11) 크기 비를 곱하면 그
+ * 값들이 그대로 따라온다. 단계마다 상수를 따로 적으면 하나를 고칠 때 나머지
+ * 둘이 남는다.
+ */
+export function petScale(stage: Stage): number {
+  return PET_METRICS[stage].size / PET_METRICS.adult.size
+}
 
 function loadImage(name: string, url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -308,9 +421,30 @@ function roomAssetNames(): string[] {
   return names
 }
 
+/**
+ * 한 단계의 표정 네 장.
+ *
+ * 객체 리터럴로 돌려주는 것은 **빠뜨림을 컴파일러가 잡게 하려고**서다.
+ * Record<FaceKind, …> 는 네 키를 전부 요구하므로, 표정이 하나 늘면 여기서 먼저
+ * 막힌다. 이름 배열을 돌려 표를 채우면 하나를 빠뜨려도 빌드가 통과한다.
+ */
+async function loadPetStage(stage: Stage): Promise<Record<FaceKind, HTMLImageElement>> {
+  const [base, blink, sad, open] = await Promise.all([
+    loadImage(petSpriteName(stage, 'base'), petAssetUrl(stage, 'base')),
+    loadImage(petSpriteName(stage, 'blink'), petAssetUrl(stage, 'blink')),
+    loadImage(petSpriteName(stage, 'sad'), petAssetUrl(stage, 'sad')),
+    loadImage(petSpriteName(stage, 'open'), petAssetUrl(stage, 'open')),
+  ])
+
+  return { base, blink, sad, open }
+}
+
 async function loadAll(): Promise<SpriteSet> {
-  const [pet, rooms, items, props, furniture] = await Promise.all([
-    loadImage('pet', petUrl),
+  // 단계도 같은 이유로 하나씩 적는다. Record<Stage, …> 가 세 단계를 전부 요구한다.
+  const [baby, child, adult, rooms, items, props, furniture] = await Promise.all([
+    loadPetStage('baby'),
+    loadPetStage('child'),
+    loadPetStage('adult'),
     loadTable(roomAssetNames(), (name) => ROOM_ASSET_URLS[name]),
     loadTable(ITEM_SPRITE_NAMES, (name) => ITEM_ASSET_URLS[name]),
     loadTable(PROP_SPRITE_NAMES, (name) => PROP_ASSET_URLS[name]),
@@ -319,7 +453,13 @@ async function loadAll(): Promise<SpriteSet> {
     loadTable(FURNITURE_SPRITE_NAMES, (name) => FURNITURE_ASSET_URLS[name]),
   ])
 
-  return { rooms, pet, items, props, furniture, itemApple: items['item-apple'] }
+  return {
+    rooms,
+    pets: { baby, child, adult },
+    items,
+    props,
+    furniture,
+  }
 }
 
 let pending: Promise<SpriteSet> | null = null

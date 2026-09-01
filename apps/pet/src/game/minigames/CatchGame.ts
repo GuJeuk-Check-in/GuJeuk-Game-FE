@@ -12,8 +12,12 @@
 
 import { GameLoop } from '@gujuck/game-core'
 import { PALETTE_DARKEST, paletteCss } from '../palette'
-import { ITEM_SPRITE_NAMES, PET_SPRITE, PROP_SPRITE_SIZE } from '../sprites'
-import type { ItemSpriteName } from '../sprites'
+import { ITEM_SPRITE_NAMES, PET_METRICS, PROP_SPRITE_SIZE } from '../sprites'
+import type { ItemSpriteName, PetMetrics } from '../sprites'
+// 앱 안에 play 가 둘이다 — 효과음(sound.play)과 배경음악(music.play). 이름만
+// 가져오면 호출부에서 어느 쪽인지 드러나지 않는다. App.tsx 가 같은 이유로 통째로
+// 가져온다.
+import * as sound from '../sound'
 import { GAME_HEIGHT, GAME_WIDTH, PixelStage } from './pixelStage'
 import type { MinigameHost } from './types'
 
@@ -75,6 +79,27 @@ const GOLDEN_SCORE = 5
  */
 const FOOD_HIT_PAD = 4
 const BOMB_HIT_PAD = 11
+
+/**
+ * 받는 폭과 그 폭의 왼쪽 끝(펫 중심 기준). **성장 단계와 무관하게 어른 값이다.**
+ *
+ * 명세 §6 은 성장을 "외형만 바뀌고 능력 차이는 없다"로 못 박았다. 이 폭을 단계별
+ * 실측(아기 63 · 어린이 82 · 어른 101)으로 두면 Lv.1 의 받는 폭이 Lv.10 보다
+ * 38px 좁아지고, 코인이 점수 그대로라(economy.ts) **레벨이 곧 코인 수급률이
+ * 된다.** 떨어지는 물건은 48px 로 단계와 무관하므로 그 차이가 그대로 남는다.
+ *
+ * 상자가 그림보다 넓어지는 것(아기는 좌우로 19px 씩)은 감수한다. 이 저장소는
+ * 이미 판정 상자를 그림이 아니라 **재미**에 맞춰 잡는다 — 폴짝 달리기의 펫 폭은
+ * 실측 100 이 아니라 60 이고, 여기서도 폭탄과 음식의 여유가 서로 다르다
+ * (BOMB_HIT_PAD · FOOD_HIT_PAD). 넓어지는 방향은 그중 "이득은 넉넉하게" 쪽이다.
+ *
+ * 세로는 단계별 실측을 그대로 쓴다. 물건은 위에서 아래로만 떨어지고 화면 바닥
+ * (GROUND_Y)까지 살아 있으므로, 가로로 겹치기만 하면 세로는 언제든 겹친다 —
+ * 상자 높이는 "받느냐"가 아니라 "머리에서 몇 px 위에서 사라지느냐"만 정한다.
+ * 어른 높이로 고정하면 아기 머리 위 43px 에서 간식이 사라진다.
+ */
+const CATCH_WIDTH = PET_METRICS.adult.bodyWidth
+const CATCH_LEFT_FROM_CENTER = PET_METRICS.adult.centerX - PET_METRICS.adult.bodyLeft
 
 /** 펫이 손가락을 따라가는 최고 속도(px/s). 화면 폭을 약 0.45초에 가로지른다. */
 const PET_SPEED = 800
@@ -178,6 +203,14 @@ export class CatchGame {
   private readonly loop: GameLoop
   private readonly canvas: HTMLCanvasElement
 
+  /**
+   * 지금 단계의 실측 좌표. 판이 도는 동안 단계는 바뀌지 않으므로 한 번만 읽는다.
+   *
+   * **그리는 자리에만 쓴다.** 받는 폭은 단계와 무관한 CATCH_WIDTH 다 — 이유는
+   * 그 상수 옆에 적어 두었다(명세 §6).
+   */
+  private readonly metrics: PetMetrics
+
   private disposed = false
 
   /** 시작한 뒤 흐른 플레이 시간(초). 탭이 숨으면 루프가 멈추므로 함께 멈춘다. */
@@ -204,6 +237,7 @@ export class CatchGame {
     this.host = host
     this.pixels = new PixelStage(host.stage)
     this.canvas = host.stage.canvas
+    this.metrics = PET_METRICS[host.petStage]
 
     this.canvas.addEventListener('pointerdown', this.handlePointerDown)
     this.canvas.addEventListener('pointermove', this.handlePointerMove)
@@ -312,8 +346,9 @@ export class CatchGame {
   }
 
   private movePet(dtSec: number): void {
-    const minX = PET_SPRITE.centerX - PET_SPRITE.bodyLeft
-    const maxX = GAME_WIDTH - (PET_SPRITE.bodyLeft + PET_SPRITE.bodyWidth - PET_SPRITE.centerX)
+    const { centerX, bodyLeft, bodyWidth } = this.metrics
+    const minX = centerX - bodyLeft
+    const maxX = GAME_WIDTH - (bodyLeft + bodyWidth - centerX)
     const target = Math.min(maxX, Math.max(minX, this.targetX))
 
     const step = PET_SPEED * dtSec
@@ -428,6 +463,8 @@ export class CatchGame {
       this.lives -= 1
       this.shakeSec = SHAKE_SEC
       this.burst(centerX, centerY, COLOR.warn)
+      // 피격은 게임 안의 사건이라 거절(refuse)과 다른 소리를 쓴다(§12.13).
+      sound.play('hit')
       if (this.lives <= 0) this.beginOutro()
       return
     }
@@ -435,6 +472,9 @@ export class CatchGame {
     this.score += faller.kind === 'golden' ? GOLDEN_SCORE : 1
     this.bounceSec = BOUNCE_SEC
     this.burst(centerX, centerY, faller.kind === 'golden' ? COLOR.spark : COLOR.sparkAlt)
+    // 황금 도넛도 같은 소리다. 점수 차이는 반짝임과 숫자로 이미 보이고, 여기서
+    // 소리까지 갈라 두면 무엇이 다른 소리였는지 판이 끝난 뒤에 기억나지 않는다.
+    sound.play('catch')
     this.host.onScore?.(this.score)
   }
 
@@ -473,13 +513,19 @@ export class CatchGame {
   // 그리기
   // ──────────────────────────────────────────────────────────────────────────
 
-  /** 펫의 충돌 상자(논리 좌표). 스프라이트 128×128 이 아니라 불투명 영역이다. */
+  /**
+   * 펫의 충돌 상자(논리 좌표).
+   *
+   * 가로는 단계와 무관한 어른 폭이고(CATCH_WIDTH), 세로만 지금 단계의 불투명
+   * 영역을 따른다. 왜 둘을 다르게 두는지는 CATCH_WIDTH 옆에 적어 두었다.
+   */
   private petBody(): { x: number; y: number; w: number; h: number } {
+    const m = this.metrics
     return {
-      x: this.petX - PET_SPRITE.centerX + PET_SPRITE.bodyLeft,
-      y: GROUND_Y - PET_SPRITE.feetY + PET_SPRITE.bodyTop - this.petLift(),
-      w: PET_SPRITE.bodyWidth,
-      h: PET_SPRITE.bodyHeight,
+      x: this.petX - CATCH_LEFT_FROM_CENTER,
+      y: GROUND_Y - m.feetY + m.bodyTop - this.petLift(),
+      w: CATCH_WIDTH,
+      h: m.bodyHeight,
     }
   }
 
@@ -534,10 +580,18 @@ export class CatchGame {
       this.pixels.drawSprite(faller.image, faller.x + dx, y)
     }
 
+    // 폭탄에 맞은 직후에는 시무룩한 얼굴로 그린다. 흔들림·빨간 테두리는 화면에
+    // 일어난 일이고, 얼굴은 펫에게 일어난 일이라 둘이 겹쳐야 "아팠다"가 읽힌다.
+    //
+    // **기분 0 도 같은 자리에 넣는다.** 미니게임 안에는 깜빡임도 먹는 것도 없어서
+    // face.ts 의 우선순위 중 남는 것은 시무룩뿐이고, 그 조건이 "게임 안의 사건"과
+    // "기분 0" 둘이다. 뒤를 빼면 기분 0 인 펫이 거실에서만 시무룩하다.
+    const face = this.shakeSec > 0 || this.host.moodZero ? 'sad' : 'base'
+
     this.pixels.drawSprite(
-      this.host.sprites.pet,
-      this.petX - PET_SPRITE.centerX + dx,
-      GROUND_Y - PET_SPRITE.feetY - this.petLift() + dy,
+      this.host.sprites.pets[this.host.petStage][face],
+      this.petX - this.metrics.centerX + dx,
+      GROUND_Y - this.metrics.feetY - this.petLift() + dy,
     )
 
     for (const spark of this.sparks) {

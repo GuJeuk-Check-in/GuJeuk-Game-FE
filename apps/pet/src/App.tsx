@@ -12,6 +12,7 @@ import {
   TUTORIAL_COMPLETE_COIN,
   WELCOME_BACK_MIN_MS,
   expForNextLevel,
+  stageForLevel,
 } from './game/pet/economy'
 import type { MinigameId } from './game/pet/economy'
 import { FOOD_IDS } from './game/pet/foods'
@@ -25,6 +26,11 @@ import { DEFAULT_ROOM, roomAt, roomIndex } from './game/rooms'
 import type { ActionId } from './game/rooms'
 import type { FoodId, FurnitureId, ItemId, RoomId } from './game/types'
 import { PALETTE_CSS } from './game/palette'
+// 소리는 모듈 하나가 통째로 상태(AudioContext · 음소거)를 들고 있어서, 이름을
+// 하나씩 가져오면 화면의 지역 변수와 이름이 겹친다(setMuted 가 그렇다). 어디서
+// 부른 것인지 읽히도록 통째로 가져온다.
+import * as sound from './game/sound'
+import * as music from './game/music'
 import { NamePrompt } from './components/NamePrompt'
 import { StatBar } from './components/StatBar'
 import { WelcomeBackCard } from './components/WelcomeBackCard'
@@ -103,6 +109,24 @@ const MINIGAME_TEXT: Record<MinigameId, { label: string; hint: string; unit: str
  * 객체 리터럴의 문자열 키는 적은 순서를 유지하므로 여기 순서는 위 표의 순서다.
  */
 const MINIGAME_ORDER = Object.keys(MINIGAME_TEXT) as MinigameId[]
+
+/**
+ * 돌봄 행동마다 낼 소리.
+ *
+ * 먹이기·씻기기에는 전용 소리가 있고 나머지(쓰다듬기·재우기·깨우기)는 tap 이다.
+ * 재우기에 소리를 새로 만들지 않은 것은 이 화면 하나 때문에 sound.ts 의 소리표를
+ * 늘리지 않기 위해서다 — 잠드는 소리는 다른 어디에서도 쓸 곳이 없다.
+ *
+ * Record 로 둔 것은 행동이 늘었을 때 빠뜨림을 타입이 잡게 하기 위함이다.
+ * MINIGAME_TEXT 와 같은 이유다.
+ */
+const SOUND_OF: Record<ActionKind, sound.SoundName> = {
+  feed: 'feed',
+  wash: 'wash',
+  pat: 'tap',
+  sleep: 'tap',
+  wake: 'tap',
+}
 
 /**
  * 놀이터 흐름의 현재 자리.
@@ -211,6 +235,16 @@ export default function App() {
   const [toast, setToast] = useState<ToastState | null>(null)
   const toastSeq = useRef(0)
 
+  /**
+   * 음소거 표시. **값의 주인은 sound 모듈이고 여기는 그 사본이다.**
+   *
+   * 세이브가 아니라 별도 localStorage 키에 사는 값이라(§12.13) 훅이 들고 있지
+   * 않다. 화면이 다시 그려지려면 React 가 아는 상태가 하나 필요해서 여기서 한 벌
+   * 들고 있고, 바꾸는 것은 언제나 sound.setMuted 를 지난다 — 두 값이 갈리면
+   * 버튼은 켜졌다고 하는데 소리가 안 나는 상태가 만들어진다.
+   */
+  const [muted, setMuted] = useState(() => sound.isMuted())
+
   /** 끌기를 시작한 손끝과 가구 왼쪽 위의 차. 이걸 안 재면 잡는 순간 가구가 튄다. */
   const grabRef = useRef({ dx: FURNITURE_HALF, dy: FURNITURE_HALF })
 
@@ -230,6 +264,25 @@ export default function App() {
   // 점선 테두리와 손에 든 가구만 사라진다.
   const decorRef = useRef<DecorUi | null>(null)
 
+  /**
+   * 캔버스에 넘길 펫의 겉모습.
+   *
+   * **레벨을 단계로 바꾸지 않고 그대로 넘긴다.** 방 캔버스는 붙어 있는 내내
+   * 레벨업을 지켜보는 쪽이라, 단계를 미리 굳혀 넘기면 화면이 그 갱신까지 책임지게
+   * 된다. 레벨만 넘기면 갱신 시점이 PetGame.setPet 안으로 들어간다(§6). 미니게임
+   * 호스트는 반대로 판이 도는 동안 단계가 고정이라 이미 정해진 단계를 받는다.
+   * 어느 쪽이든 판정 자체는 economy.ts 의 stageForLevel 한 곳에서만 한다.
+   * 기분 0 도 마찬가지로 사실만 넘기고 어떤 얼굴인지는 face.ts 가 정한다(§4).
+   */
+  const petLevel = save?.pet.level ?? null
+  const petMoodZero = save !== null && save.stats.mood <= 0
+
+  // 성장 단계와 기분도 마운트 때 세워야 한다. 미니게임에서 돌아오면 방 캔버스가
+  // 통째로 다시 붙는데, 그때 넣어 주지 않으면 아래 effect 가 돌기 전 한 프레임이
+  // 기본값(아기 · 멀쩡한 얼굴)으로 그려진다.
+  const petViewRef = useRef<{ level: number; moodZero: boolean } | null>(null)
+  petViewRef.current = petLevel === null ? null : { level: petLevel, moodZero: petMoodZero }
+
   // GameCanvas는 이 콜백을 마운트 시 한 번만 부른다. 돌려주는 함수에서
   // 게임을 확실히 정리해야 StrictMode 재마운트에서 루프가 두 벌 돌지 않는다.
   const handleMount = useCallback((stage: CanvasStage) => {
@@ -239,6 +292,7 @@ export default function App() {
     game.setRoom(roomIdRef.current)
     if (placedRef.current) game.setDecor(placedRef.current)
     game.setDecorEdit(toDecorEdit(decorRef.current))
+    if (petViewRef.current) game.setPet(petViewRef.current)
     gameRef.current = game
 
     return () => {
@@ -250,6 +304,59 @@ export default function App() {
   useEffect(() => {
     gameRef.current?.setRoom(room.id)
   }, [room.id])
+
+  /**
+   * 레벨과 기분이 바뀌면 캔버스에 알린다. 게임 클래스는 세이브를 모른다.
+   *
+   * 레벨업으로 단계가 바뀌는 순간이 이 경로를 지난다 — 미니게임 정산이나 먹이기
+   * 직후에 세이브가 갈리고, 그 커밋에서 펫이 커진다.
+   */
+  useEffect(() => {
+    if (petLevel === null) return
+    gameRef.current?.setPet({ level: petLevel, moodZero: petMoodZero })
+  }, [petLevel, petMoodZero])
+
+  /**
+   * 첫 사용자 제스처에서 오디오를 연다. **이 전에는 어떤 소리도 나지 않는다.**
+   *
+   * 모바일 브라우저는 사용자 제스처 없이 시작된 AudioContext 를 정지 상태로
+   * 만든다(자동재생 정책). 앱 전체에서 한 번만 걸면 되므로 여기 한 곳에 둔다 —
+   * 버튼마다 걸면 캔버스를 먼저 만진 사람은 영영 무음이 된다.
+   *
+   * **`once: true` 를 쓰지 않는다.** 탭을 백그라운드로 보냈다 돌아오면 컨텍스트가
+   * suspended 로 남아 그 뒤로 계속 무음인데, unlock() 은 그 경우 resume 만 하고
+   * 끝난다(sound.ts). 매 제스처마다 부르는 값이 그 복구보다 싸다.
+   *
+   * capture 로 잡는 것은 도중에 stopPropagation 하는 핸들러가 있어도 닿게 하려는
+   * 것이다. 소리를 여는 것은 화면의 조작과 경쟁할 일이 아니다.
+   */
+  useEffect(() => {
+    // 컨텍스트가 열린 뒤에야 음악을 걸 수 있다. **여기서 곡을 고르지 않는다** —
+    // start() 는 화면이 마지막으로 요청한 곡을 이어 걸므로(music.ts 의 wanted),
+    // 미니게임 도중에 캔버스를 탭해도 그 판의 곡이 홈 곡으로 갈아 끼워지지 않는다.
+    //
+    // **음소거로 시작한 세션에는 아무것도 열지 않는다.** 음악의 muted 는 볼륨만
+    // 0 으로 두고 예약은 계속하므로, 켜 두면 들리지 않는 음을 세션 내내 합성한다.
+    // 잠금 해제도 미룬다 — 음소거를 푸는 것 역시 버튼을 누르는 제스처라 그때
+    // 열어도 늦지 않다(toggleMute).
+    const open = () => {
+      if (sound.isMuted()) return
+      sound.unlock()
+      music.start()
+    }
+    const options: AddEventListenerOptions = { capture: true, passive: true }
+
+    window.addEventListener('pointerdown', open, options)
+    window.addEventListener('keydown', open, options)
+
+    return () => {
+      window.removeEventListener('pointerdown', open, options)
+      window.removeEventListener('keydown', open, options)
+      // 예약된 음표가 남아 있으므로 반드시 멈춘다. StrictMode 재마운트에서
+      // 두 벌이 겹쳐 돌면 화음이 어긋난 채로 두 곡이 흐른다.
+      music.stop()
+    }
+  }, [])
 
   // 놓인 가구가 바뀌면 캔버스에 넣어 준다. 게임 클래스는 세이브를 모른다.
   useEffect(() => {
@@ -291,6 +398,9 @@ export default function App() {
     if (tutorialFinishedAt === null) return
     pushToast('튜토리얼 끝! 이제 마음대로 놀아도 돼요.', `보너스 +${TUTORIAL_COMPLETE_COIN} 코인`)
     gameRef.current?.bounce()
+    // 코인 소리가 아니라 레벨업 소리다. 지급도 있지만 이 순간의 뜻은 "다 배웠다"
+    // 이고, 그건 이 게임에서 레벨업과 같은 급의 사건이다.
+    sound.play('levelUp')
   }, [tutorialFinishedAt, pushToast])
 
   /**
@@ -304,9 +414,38 @@ export default function App() {
     if (phase?.kind !== 'result') return
     if (phase.settlement.coins <= 0) return
     gameRef.current?.bounce()
+    // 레벨이 올랐으면 코인 소리 대신 레벨업 소리다. 결과 카드에 두 줄이 함께
+    // 뜨는데 소리까지 겹쳐 내면 둘 다 뭉개지고, 더 큰 소식은 레벨 쪽이다
+    // (돌봄 쪽 showOutcome 과 같은 규칙).
+    sound.play(phase.settlement.leveledUpTo === null ? 'coin' : 'levelUp')
   }, [phase])
 
   const dismissToast = useCallback(() => setToast(null), [])
+
+  /**
+   * 음소거 토글.
+   *
+   * 끄는 쪽에서는 아무 소리도 내지 않고, 켜는 쪽에서만 한 번 낸다. **켰다는
+   * 사실을 소리로 확인시켜 주지 않으면** 볼륨이 0 인 기기에서 버튼만 바뀐 채로
+   * "켰는데 안 들린다"가 되고, 그때 사람은 게임이 고장 났다고 생각한다.
+   */
+  const toggleMute = useCallback(() => {
+    const next = !sound.isMuted()
+    sound.setMuted(next)
+
+    // 음소거로 시작한 세션에는 컨텍스트도 곡도 아직 없다. 이 클릭이 곧 사용자
+    // 제스처라 여기서 열어도 자동재생 정책에 걸리지 않는다.
+    if (!next) sound.unlock()
+
+    // 배경음악도 같은 값을 따른다. 값을 넘기지 않고 읽어 가게 하는 것은 음소거의
+    // 주인을 sound 하나로 두기 위해서다(music.ts 의 syncMuted). 이미 돌고 있는
+    // 곡은 여기서 볼륨만 되돌아오고, 아직 없으면 아래 start() 가 처음 건다.
+    music.syncMuted()
+    if (!next) music.start()
+
+    setMuted(next)
+    if (!next) sound.play('tap')
+  }, [])
 
   if (!save) {
     return (
@@ -321,20 +460,33 @@ export default function App() {
   }
 
   /** 액션 결과를 화면에 옮긴다. 거절이면 message 에 이유가 들어 있다(계약). */
-  const showOutcome = (outcome: ActionOutcome) => {
+  const showOutcome = (kind: ActionKind, outcome: ActionOutcome) => {
     // 레벨업은 따로 알린다. 한 줄에 붙이면 "배불러!"에 묻혀 지나간다.
     pushToast(
       outcome.message,
       outcome.leveledUpTo === null ? null : `레벨업! Lv.${outcome.leveledUpTo}`,
     )
 
-    // 실제로 통했을 때만 반응한다. 거절에도 튀면 무엇이 먹혔는지 알 수 없다.
-    if (outcome.changed) gameRef.current?.bounce()
+    if (!outcome.changed) {
+      // **거절에도 소리를 준다.** 아무 반응이 없으면 눌리지 않은 것처럼 느껴진다
+      // (§14 "거절도 반응인가"). 튀지는 않는다 — 거절에도 튀면 무엇이 먹혔는지
+      // 알 수 없다.
+      sound.play('refuse')
+      return
+    }
+
+    // 먹였을 때만 입을 벌린다. 나머지 돌봄은 튀기만 한다.
+    if (kind === 'feed') gameRef.current?.eat()
+    else gameRef.current?.bounce()
+
+    // 레벨이 올랐으면 행동 소리 **대신** 레벨업 소리를 낸다. 같은 프레임에 둘을
+    // 겹쳐 내면 둘 다 뭉개지고, 이 순간의 소식은 레벨업 쪽이다.
+    sound.play(outcome.leveledUpTo === null ? SOUND_OF[kind] : 'levelUp')
   }
 
   const run = (kind: ActionKind, food?: FoodId) => {
     const outcome = act(kind, food)
-    if (outcome) showOutcome(outcome)
+    if (outcome) showOutcome(kind, outcome)
   }
 
   const handleAction = (id: ActionId) => {
@@ -371,8 +523,12 @@ export default function App() {
 
     if (!isRoomUnlocked(save, target.id)) {
       pushToast(`아직 잠긴 방이에요 — ${target.label}`, '튜토리얼을 조금 더 진행하면 열려요.')
+      sound.play('refuse')
       return
     }
+
+    // 방이 실제로 바뀌는 것만 소리를 낸다. 잠긴 방은 위에서 이미 거절 소리를 냈다.
+    sound.play('tap')
 
     // 방을 나가면 배치 모드도 끝난다. 거실에만 놓을 수 있으므로(PetGame 의
     // DECOR_ROOM), 모드만 남기면 다른 방에서 눌러도 아무 일이 없는 상태가 된다.
@@ -388,12 +544,18 @@ export default function App() {
 
     pushToast(outcome.message, outcome.changed ? '가방에 넣어 두었어요.' : null)
 
-    if (outcome.changed) {
-      // 방금 산 줄이 잠깐 반응한다. 목록이 길어 토스트만으로는 어느 줄이
-      // 팔렸는지 보이지 않는다.
-      setJustBought(item)
-      gameRef.current?.bounce()
+    if (!outcome.changed) {
+      // 돈이 모자라 못 산 것도 반응이 있어야 한다. 목록이 길어 토스트만으로는
+      // 무엇이 거절됐는지 눈이 늦게 따라온다.
+      sound.play('refuse')
+      return
     }
+
+    // 방금 산 줄이 잠깐 반응한다. 목록이 길어 토스트만으로는 어느 줄이
+    // 팔렸는지 보이지 않는다.
+    setJustBought(item)
+    gameRef.current?.bounce()
+    sound.play('coin')
   }
 
   /**
@@ -492,7 +654,12 @@ export default function App() {
       if (item === null) return
 
       const outcome = placeFurniture(item, drag.x, drag.y)
-      if (outcome) pushToast(outcome.message)
+      if (outcome) {
+        pushToast(outcome.message)
+        // 놓였는지 거절됐는지가 소리로 먼저 온다. 가구는 손끝에 가려 있어서
+        // 놓인 자리가 손을 뗀 뒤에야 보인다.
+        sound.play(outcome.changed ? 'tap' : 'refuse')
+      }
       return
     }
 
@@ -505,7 +672,10 @@ export default function App() {
 
     const outcome = moveFurniture(drag.index, drag.x, drag.y)
     // 성공은 화면이 이미 말하고 있다(가구가 그 자리에 있다). 거절만 문구로 알린다.
-    if (outcome && !outcome.changed) pushToast(outcome.message)
+    if (outcome && !outcome.changed) {
+      pushToast(outcome.message)
+      sound.play('refuse')
+    }
   }
 
   /**
@@ -526,7 +696,10 @@ export default function App() {
 
     const outcome = pickUpFurniture(decor.selected)
     setDecor({ ...decor, selected: null, drag: null })
-    if (outcome) pushToast(outcome.message)
+    if (outcome) {
+      pushToast(outcome.message)
+      sound.play(outcome.changed ? 'tap' : 'refuse')
+    }
   }
 
   const header = (
@@ -540,6 +713,19 @@ export default function App() {
         <span className="pt-hud__coins">
           <span aria-hidden="true">◎</span> {save.wallet.coins}
         </span>
+        {/* 음소거는 HUD 의 기존 줄 안에 둔다. 줄을 새로 만들면 HUD 가 몇 px
+            두꺼워지고, 그것만으로 캔버스의 정수 배율이 2 에서 1 로 떨어질 수
+            있다(§14 의 M2 기록). 상태는 아이콘과 글자 둘로 보인다 — 아이콘만
+            두면 지금이 켜진 것인지 끄는 버튼인지 갈린다. */}
+        <button
+          type="button"
+          className={muted ? 'pt-hud__mute is-muted' : 'pt-hud__mute'}
+          onClick={toggleMute}
+          aria-pressed={muted}
+        >
+          <span aria-hidden="true">{muted ? '🔇' : '🔊'}</span>
+          <span className="pt-hud__mute-text">소리 {muted ? '끔' : '켬'}</span>
+        </button>
       </div>
       {/* 튜토리얼이 게이지를 가리킬 때 잡는 대상이다. StatBar 를 고치지 않고
           감싸는 것은, 강조가 스탯 표시의 일이 아니라 튜토리얼의 일이기 때문이다
@@ -651,6 +837,15 @@ export default function App() {
           {playing ? (
             <MinigameScreen
               game={playing.game}
+              // 방에서 보이던 그 펫이 그대로 나와야 한다. 여기서만 단계로 바꾸는
+              // 것은 미니게임 호스트가 판이 도는 동안 **고정된 단계**를 요구하기
+              // 때문이다(minigames/types.ts) — 레벨을 넘기면 세 게임이 저마다
+              // 판정을 다시 하게 되고, 그때 §6 의 표가 여러 벌로 흩어진다.
+              // 판정 자체는 economy.ts 의 stageForLevel 한 곳뿐이다.
+              petStage={stageForLevel(save.pet.level)}
+              // 기분도 같이 넘긴다. 방에서 시무룩하던 펫이 미니게임에 들어가는
+              // 순간 멀쩡한 얼굴이 되면, 바뀐 것이 없는데 얼굴만 바뀐 셈이다.
+              moodZero={petMoodZero}
               onEnd={(score) => handleEnd(playing.game, score)}
               onExit={() => setPhase(null)}
             />

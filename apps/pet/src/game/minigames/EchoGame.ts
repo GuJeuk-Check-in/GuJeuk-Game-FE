@@ -11,7 +11,11 @@
 import { GameLoop, PointerInput } from '@gujuck/game-core'
 import { PALETTE_DARKEST, PALETTE_LIGHTEST, paletteCss } from '../palette'
 import type { PaletteHex } from '../palette'
-import { PET_SPRITE } from '../sprites'
+import { PET_METRICS } from '../sprites'
+// 앱 안에 play 가 둘이다 — 효과음(sound.play)과 배경음악(music.play). 이름만
+// 가져오면 호출부에서 어느 쪽인지 드러나지 않는다. App.tsx 가 같은 이유로 통째로
+// 가져온다.
+import * as sound from '../sound'
 import { GAME_HEIGHT, GAME_WIDTH, PixelStage } from './pixelStage'
 import type { MinigameHost } from './types'
 
@@ -267,6 +271,11 @@ export class EchoGame {
       }
 
       this.litTile = this.pattern[this.watchIndex]
+      // 재생에도 소리를 준다. 이 게임은 순서를 기억하는 게임이라, 소리가 붙으면
+      // 색만 볼 때보다 리듬으로도 외울 수 있다. **네 타일이 같은 소리인 것은
+      // sound.ts 의 소리표를 늘리지 않기 위해서다** — 타일마다 음을 다르게 하려면
+      // 소리표에 네 줄이 늘고, 그 넷은 이 게임 밖에서 쓸 곳이 없다.
+      sound.play('tap')
       this.timer += this.stepSec(PLAY_LIT_SEC)
     }
   }
@@ -296,6 +305,12 @@ export class EchoGame {
       this.timer = WON_SEC
       // 마지막 한 번은 뛰면서 끝낸다. idle 로 서서 끝나면 이긴 것으로 안 읽힌다.
       this.hopSec = 0
+      // **레벨업 징글을 쓰지 않는다.** 이 판이 끝나면 1초 안에 결과 카드가 뜨고,
+      // 거기서 레벨이 올랐으면 App 이 같은 징글을 낸다 — 완전히 같은 소리가 두 번
+      // 나면 뒤의 진짜 레벨업이 앞의 메아리로 들린다. 뜻이 다른 사건은 소리가
+      // 달라야 어느 쪽인지 안다(§12.13). 다 이긴 것은 '완벽해!' 와 만세 자세와
+      // WON_SEC 의 여운이 이미 말하고 있으므로, 소리는 라운드 클리어로 끝낸다.
+      sound.play('catch')
       return
     }
 
@@ -372,6 +387,9 @@ export class EchoGame {
       this.phase = 'wrong'
       this.wrongTile = tile
       this.timer = WRONG_SEC
+      // 거절(refuse)이 아니라 피격(hit)이다. 누른 것 자체는 받아들여졌고, 그
+      // 결과로 판이 끝난 것이라 게임 안의 사건 쪽이다(§12.13).
+      sound.play('hit')
       return
     }
 
@@ -381,7 +399,14 @@ export class EchoGame {
     if (this.inputIndex >= this.pattern.length) {
       this.phase = 'clear'
       this.timer = CLEAR_SEC
+      // 라운드를 끝낸 순간은 이 게임의 성공 지점이다. 입력 소리(tap)를 함께 내지
+      // **않는다** — 같은 프레임에 두 소리를 겹쳐 내면 둘 다 뭉개져 어느 쪽도
+      // 신호가 되지 못한다.
+      sound.play('catch')
+      return
     }
+
+    sound.play('tap')
   }
 
   /** 논리 좌표가 어느 타일 위인지. 아래 그림자 판까지 눌리는 자리로 친다. */
@@ -441,11 +466,30 @@ export class EchoGame {
     return this.inputIndex
   }
 
+  /**
+   * 이 판이 틀려서 끝났는가(또는 끝나는 중인가).
+   *
+   * 얼굴과 자세가 같은 조건을 보므로 한 곳에 둔다. 두 벌로 두면 한쪽만 고쳐져
+   * 시무룩한 얼굴로 만세를 하는 프레임이 생긴다.
+   */
+  private failed(): boolean {
+    return this.phase === 'wrong' || (this.phase === 'ended' && !this.wonAll)
+  }
+
   private drawPet(): void {
+    // 단계마다 크기가 다르므로 좌표도 단계에서 읽는다. 어른 값으로 그리면 아기가
+    // 타일 격자 위로 46px 떠서 공중에 선다.
+    const metrics = PET_METRICS[this.host.petStage]
+
+    // 틀린 판은 시무룩한 얼굴로 끝난다. 1px 내려앉는 것만으로는 표정이 없던 시절의
+    // 신호이고, 이제는 얼굴이 그 말을 대신할 수 있다. 기분 0 도 같은 자리다 —
+    // 이유는 CatchGame 의 같은 줄에 적어 두었다(face.ts 의 우선순위).
+    const face = this.failed() || this.host.moodZero ? 'sad' : 'base'
+
     this.pixel.drawSprite(
-      this.host.sprites.pet,
-      GAME_WIDTH / 2 - PET_SPRITE.centerX,
-      PET_FEET_Y - PET_SPRITE.feetY - this.petLift(),
+      this.host.sprites.pets[this.host.petStage][face],
+      GAME_WIDTH / 2 - metrics.centerX,
+      PET_FEET_Y - metrics.feetY - this.petLift(),
     )
   }
 
@@ -456,7 +500,7 @@ export class EchoGame {
    * 틀리면 1px 내려앉아 시무룩해진다.
    */
   private petLift(): number {
-    if (this.phase === 'wrong' || (this.phase === 'ended' && !this.wonAll)) return -1
+    if (this.failed()) return -1
 
     if (this.hopSec !== null) {
       const t = Math.min(1, this.hopSec / HOP_SEC)

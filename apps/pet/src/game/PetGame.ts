@@ -3,13 +3,19 @@ import type { CanvasStage } from '@gujuck/game-core'
 import { PALETTE_DARKEST, PALETTE_LIGHTEST } from './palette'
 import { DEFAULT_ROOM, ROOMS, roomIndex } from './rooms'
 import type { RoomDef } from './rooms'
-import { PET_SPRITE, furnitureSpriteName, loadSprites } from './sprites'
+import { PET_METRICS, furnitureSpriteName, loadSprites } from './sprites'
 import type { SpriteSet } from './sprites'
 // 배치의 한 칸 크기와 놓을 수 있는 범위는 규칙 모듈이 정한다. 렌더러가 자기 값을
 // 따로 들면 규칙이 허용하는 자리와 화면이 그리는 자리가 갈린다(decor.ts 참조).
 // 렌더러 → 규칙 방향의 import 라 §11 의 계층을 거스르지 않는다.
 import { DECOR_AREA, FURNITURE_SIZE } from './pet/decor'
-import type { FurnitureId, RoomDecor, RoomId } from './types'
+// 어느 레벨이 어느 단계인지도 같은 이유로 규칙 모듈에서 가져온다. 여기서 레벨을
+// 다시 비교하면 명세 §6 의 표가 두 벌이 되고, 문턱을 옮길 때 한쪽만 바뀐다.
+import { stageForLevel } from './pet/economy'
+// 표정 선택 규칙도 마찬가지다. "언제 슬픈 얼굴인가"를 렌더러가 다시 판단하면
+// 미니게임이 생겼을 때 같은 판단이 또 한 벌 생긴다(face.ts 첫머리).
+import { isBlinking, pickFace } from './pet/face'
+import type { FurnitureId, RoomDecor, RoomId, Stage } from './types'
 
 /**
  * 논리 해상도. 방 배경 에셋이 정확히 이 크기로 그려져 있다.
@@ -26,8 +32,8 @@ export const LOGICAL_HEIGHT = 640
  * 진폭은 **정수 픽셀로 반올림해서** 쓴다. 소수 좌표로 그리면 도트가 흐려지는데,
  * 1px 흐려진 도트는 "왜인지 모르게 화질이 나쁜" 화면이 된다.
  *
- * 눈 깜빡임은 넣지 않는다. 표정 오버레이 에셋이 아직 없다(M5). 없는 에셋을
- * 가정한 코드를 미리 써 두면 에셋이 나올 때쯤 아무도 그 코드를 믿지 않는다.
+ * 눈 깜빡임은 여기서 파형으로 만들지 않고 face.ts 의 isBlinking 에 elapsedSec 을
+ * 넘겨 묻는다. 주기와 길이는 그쪽이 정한다 — 화면 없이 테스트되는 값이다.
  */
 const IDLE_BOB_PX = 2
 const IDLE_BOB_PERIOD_SEC = 2.6
@@ -55,6 +61,22 @@ const ROOM_SLIDE_SEC = 0.18
 const BOUNCE_SEC = 0.5
 const BOUNCE_HEIGHT_PX = 10
 const BOUNCE_HOPS = 2
+
+/**
+ * 먹였을 때 입을 벌리고 있는 시간(초).
+ *
+ * **튀는 동작의 첫 번째 점프 길이로 잡는다**(BOUNCE_SEC / BOUNCE_HOPS = 0.25초).
+ * 값을 따로 적지 않고 유도하는 것은 둘이 같은 순간이어야 하기 때문이다 — 입은
+ * 먹는 시늉이고 점프는 그 반응이라, 어느 한쪽만 길면 입을 벌린 채 착지하거나
+ * 입을 다문 채 뛰어오른다.
+ *
+ * 길이 자체는 두 방향에서 걸린다. 60Hz 에서 15프레임이라 눈에 확실히 들어오고,
+ * 그러면서도 **다음 먹이기까지 남아 있지 않다.** 더 길게 두면(예: 1초) 사과를
+ * 연달아 먹일 때 입이 계속 벌어져 있어 "먹는 중"이 아니라 "입이 벌어진 펫"으로
+ * 보이고, 그 순간 이 표정은 행동에 대한 답이 아니게 된다. 더 짧게 두면(0.1초
+ * 아래) 토스트가 뜨는 것을 보는 사이에 지나가 버린다.
+ */
+const MOUTH_OPEN_SEC = BOUNCE_SEC / BOUNCE_HOPS
 
 /**
  * 레터박스 색.
@@ -186,6 +208,22 @@ export class PetGame {
   /** 튀는 동작이 시작된 뒤 흐른 시간(초). 튀고 있지 않으면 null. */
   private bounceSec: number | null = null
 
+  /** 입을 벌린 뒤 흐른 시간(초). 다물고 있으면 null. */
+  private mouthSec: number | null = null
+
+  /**
+   * 지금 그릴 성장 단계. **레벨을 여기 두지 않는다** — 단계를 고르는 규칙은
+   * economy.ts 의 stageForLevel 뿐이고, 그 결과만 들고 있으면 된다.
+   *
+   * 세이브가 도착하기 전의 기본값이 'baby' 인 것은 첫 화면이 Lv.1 이라서가
+   * 아니라, 세 단계 중 **가장 작은 것이 틀렸을 때 덜 어긋나기** 때문이다. 어른을
+   * 기본값으로 두면 세이브가 도착하는 프레임에 큰 펫이 잠깐 보였다 줄어든다.
+   */
+  private petStage: Stage = 'baby'
+
+  /** 기분이 0 인가(§4). 시무룩한 얼굴의 조건이고, 판단은 face.ts 가 한다. */
+  private moodZero = false
+
   /**
    * 거실에 놓인 가구. **세이브를 직접 읽지 않는다** — 밖에서 setDecor 로 넣어
    * 준다. 이 클래스가 세이브를 알게 되면 규칙과 그리기가 다시 붙는다.
@@ -232,6 +270,7 @@ export class PetGame {
     // 코드가 붙었을 때 죽은 전환이 되살아나지 않는다.
     this.slide = null
     this.bounceSec = null
+    this.mouthSec = null
     this.edit = null
     this.loop.destroy()
   }
@@ -294,6 +333,32 @@ export class PetGame {
   bounce(): void {
     if (this.disposed) return
     this.bounceSec = 0
+  }
+
+  /**
+   * 먹였다. 튀는 동작에 입 벌림을 얹는다.
+   *
+   * bounce() 에 인자를 더하지 않고 함수를 나눈 것은 부르는 쪽에서 읽히게 하려는
+   * 것이다 — `bounce(true)` 는 무엇이 참인지 부르는 자리에서 알 수 없다.
+   */
+  eat(): void {
+    if (this.disposed) return
+    this.bounce()
+    this.mouthSec = 0
+  }
+
+  /**
+   * 세이브에서 화면에 필요한 두 가지를 받는다.
+   *
+   * **이 클래스는 세이브를 모른다**(클래스 첫머리의 계약). 그래서 레벨과 기분을
+   * 통째로 들여다보지 않고 밖에서 넣어 준다. 둘을 한 함수로 묶은 것은 같은
+   * 커밋에서 함께 바뀌는 값이기 때문이다 — 미니게임 정산 한 번에 레벨이 오르고
+   * 기분이 깎이는데, 두 함수로 나누면 그사이 한 프레임이 어긋난 조합으로 그려진다.
+   */
+  setPet(input: { level: number; moodZero: boolean }): void {
+    if (this.disposed) return
+    this.petStage = stageForLevel(input.level)
+    this.moodZero = input.moodZero
   }
 
   /** 방에 놓인 가구를 통째로 갈아 끼운다. 세이브의 room.placed 를 그대로 넘긴다. */
@@ -359,6 +424,11 @@ export class PetGame {
     if (this.bounceSec !== null) {
       this.bounceSec += dtSec
       if (this.bounceSec >= BOUNCE_SEC) this.bounceSec = null
+    }
+
+    if (this.mouthSec !== null) {
+      this.mouthSec += dtSec
+      if (this.mouthSec >= MOUTH_OPEN_SEC) this.mouthSec = null
     }
   }
 
@@ -438,10 +508,25 @@ export class PetGame {
 
     // 펫은 들어오는 방 위에만 그린다. 떠나는 방에도 그리면 전환 도중 펫이 화면에
     // 두 마리 보인다.
+    //
+    // 어느 얼굴을 그릴지는 face.ts 가 정한다. 여기서 조건을 다시 늘어놓으면
+    // "시무룩할 때는 깜빡이지 않는다" 같은 규칙이 렌더러 안에 숨는다.
+    const face = pickFace({
+      moodZero: this.moodZero,
+      eating: this.mouthSec !== null,
+      // 벽시계가 아니라 누적 갱신 시간을 넘긴다. 탭이 숨은 동안 깜빡임이 진행되면
+      // 돌아왔을 때 눈을 감은 채로 나타난다.
+      blinking: isBlinking(this.elapsedSec),
+    })
+
+    // **단계마다 스프라이트 크기가 다르므로 좌표도 단계에서 읽는다.** 어른 값을
+    // 그대로 쓰면 아기가 바닥에 파묻히고 가로로도 밀린다(PET_METRICS 주석).
+    const metrics = PET_METRICS[this.petStage]
+
     ctx.drawImage(
-      sprites.pet,
-      roomX + this.room.anchor.x - PET_SPRITE.centerX,
-      this.room.anchor.y - PET_SPRITE.feetY - this.petLift(),
+      sprites.pets[this.petStage][face],
+      roomX + this.room.anchor.x - metrics.centerX,
+      this.room.anchor.y - metrics.feetY - this.petLift(),
     )
   }
 

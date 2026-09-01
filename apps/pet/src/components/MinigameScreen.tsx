@@ -8,6 +8,8 @@ import { loadSprites } from '../game/sprites'
 import type { SpriteSet } from '../game/sprites'
 import type { MinigameHost } from '../game/minigames/types'
 import type { MinigameId } from '../game/pet/economy'
+import * as music from '../game/music'
+import type { Stage } from '../game/types'
 
 /**
  * 세 게임이 공통으로 갖는 것.
@@ -21,6 +23,20 @@ interface Minigame {
 
 export interface MinigameScreenProps {
   game: MinigameId
+  /**
+   * 지금 펫의 성장 단계. 방에서 보이던 그 펫이 그대로 나와야 한다.
+   *
+   * 레벨이 아니라 이미 정해진 단계를 받는다 — 레벨 → 단계 판정은 economy.ts 의
+   * stageForLevel 한 곳에만 둔다(명세 §6).
+   */
+  petStage: Stage
+  /**
+   * 기분이 0 인가. 방에서 시무룩하던 펫은 미니게임에서도 시무룩해야 한다.
+   *
+   * 판정을 여기서 하지 않고 값을 받는 것은 petStage 와 같은 이유다 — "언제
+   * 시무룩한가"는 face.ts 의 규칙이고, 화면마다 다시 판단하면 규칙이 여러 벌이 된다.
+   */
+  moodZero: boolean
   /** 판이 끝났을 때 최종 점수. 정산은 부르는 쪽(usePet)이 한다. */
   onEnd: (score: number) => void
   /** 중도 포기. 명세대로 보상도 소모도 없다. */
@@ -34,7 +50,7 @@ export interface MinigameScreenProps {
  * 코인·EXP·에너지를 정하는 것은 game/pet/minigames.ts 다. 여기가 하는 일은 둘을
  * 잇고 화면을 정리하는 것뿐이다.
  */
-export function MinigameScreen({ game, onEnd, onExit }: MinigameScreenProps) {
+export function MinigameScreen({ game, petStage, moodZero, onEnd, onExit }: MinigameScreenProps) {
   const [sprites, setSprites] = useState<SpriteSet | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
 
@@ -48,6 +64,20 @@ export function MinigameScreen({ game, onEnd, onExit }: MinigameScreenProps) {
   spritesRef.current = sprites
 
   /**
+   * 단계도 같은 이유로 ref 로 읽는다. 의존성에 넣으면 판이 도는 중에 레벨이 올라
+   * 단계가 바뀌는 순간 게임이 통째로 다시 만들어진다 — 점수가 0 으로 돌아간다.
+   *
+   * 판이 끝날 때까지 이 판의 펫은 시작할 때의 모습으로 둔다. 한 판이 1분이라
+   * 그동안 커지지 않는 것이 오히려 자연스럽고, 다음 판부터 큰 펫이 나온다.
+   */
+  const petStageRef = useRef(petStage)
+  petStageRef.current = petStage
+
+  /** 기분도 같은 이유로 ref 다. 판이 도는 동안의 값은 시작할 때의 것으로 굳는다. */
+  const moodZeroRef = useRef(moodZero)
+  moodZeroRef.current = moodZero
+
+  /**
    * 이 판의 정산이 이미 나갔는가.
    *
    * 계약상 게임 클래스는 onEnd 를 한 판에 정확히 한 번만 부르지만, StrictMode 는
@@ -56,6 +86,19 @@ export function MinigameScreen({ game, onEnd, onExit }: MinigameScreenProps) {
    * 컴포넌트가 사는 동안 한 번만 통과시키는 것으로 그 경로를 막는다.
    */
   const settledRef = useRef(false)
+
+  /**
+   * 판이 도는 동안에는 그 게임의 곡을 건다.
+   *
+   * 거실의 느린 곡이 미니게임까지 이어지면 무엇이 바뀌었는지 몸이 모른다 —
+   * 화면만 바뀌고 분위기는 그대로라 판이 시작된 느낌이 나지 않는다. 나갈 때
+   * 기본 곡으로 되돌리는 것을 정리 함수에 두어, 중도 포기든 정상 종료든 같은
+   * 경로를 지나게 한다.
+   */
+  useEffect(() => {
+    music.play(game)
+    return () => music.play('home')
+  }, [game])
 
   useEffect(() => {
     // 언마운트 뒤에 도착하는 로딩 콜백이 죽은 컴포넌트의 상태를 건드리지 않게 한다.
@@ -97,6 +140,8 @@ export function MinigameScreen({ game, onEnd, onExit }: MinigameScreenProps) {
       const host: MinigameHost = {
         stage,
         sprites: loaded,
+        petStage: petStageRef.current,
+        moodZero: moodZeroRef.current,
         onEnd: (value: number) => {
           if (settledRef.current) return
           settledRef.current = true
