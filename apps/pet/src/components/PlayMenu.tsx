@@ -18,6 +18,14 @@ export interface PlayMenuItem {
 
 export interface PlayMenuProps {
   items: readonly PlayMenuItem[]
+  /**
+   * 이번 판이 에너지를 소모하지 않는가(튜토리얼 중, §9).
+   *
+   * 면제되는데도 "기운 -12" 를 그대로 띄우면 화면이 깎이지 않을 값을 예고한다.
+   * 판정은 tutorial.ts 가 하고 여기는 결과만 받는다 — 메뉴가 단계를 세면 면제
+   * 규칙이 두 벌이 된다(위 PlayMenuItem 주석과 같은 이유다).
+   */
+  energyFree: boolean
   onPick: (game: MinigameId) => void
   onClose: () => void
 }
@@ -29,7 +37,7 @@ export interface PlayMenuProps {
  * 남짓)은 사용자가 남은 판수를 셀 수 있어야 성립하는데, 들어가 보고 나서야
  * 얼마가 깎이는지 알게 되면 그 계산을 할 수가 없다.
  */
-export function PlayMenu({ items, onPick, onClose }: PlayMenuProps) {
+export function PlayMenu({ items, energyFree, onPick, onClose }: PlayMenuProps) {
   return (
     <div className="pt-play" role="dialog" aria-modal="true" aria-labelledby="pt-play-title">
       <div className="pt-play__sheet">
@@ -49,7 +57,9 @@ export function PlayMenu({ items, onPick, onClose }: PlayMenuProps) {
                 <span className="pt-play__row">
                   <span className="pt-play__label">{item.label}</span>
                   {/* 비용은 오른쪽 끝에 세로로 맞춰 세 게임을 한눈에 비교하게 둔다. */}
-                  <span className="pt-play__cost">기운 -{MINIGAME_ENERGY_COST[item.id]}</span>
+                  <span className="pt-play__cost">
+                    {energyFree ? '기운 그대로' : `기운 -${MINIGAME_ENERGY_COST[item.id]}`}
+                  </span>
                 </span>
                 <span className="pt-play__hint">{item.hint}</span>
               </button>

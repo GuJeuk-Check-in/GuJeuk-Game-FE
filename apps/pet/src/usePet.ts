@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ElapsedReport, FoodId, ItemId, PetSave } from './game/types'
+import type { ElapsedReport, FoodId, FurnitureId, ItemId, PetSave } from './game/types'
 import { applyElapsed } from './game/pet/stats'
 import type { LoadResult } from './game/pet/save'
 import { createSave, loadSave, writeSave } from './game/pet/save'
@@ -8,6 +8,12 @@ import { feed, grantItem, pat, startSleep, wakeUp, wash } from './game/pet/actio
 import type { MinigameId } from './game/pet/economy'
 import type { PlayCheck, Settlement } from './game/pet/minigames'
 import { canPlay, settle } from './game/pet/minigames'
+import type { PurchaseOutcome } from './game/pet/shop'
+import { buy } from './game/pet/shop'
+import type { DecorOutcome } from './game/pet/decor'
+import { moveTo, pickUp, place } from './game/pet/decor'
+import type { TutorialEvent } from './game/pet/tutorial'
+import { advance, keepTutorialEnergy, skip, startTutorial } from './game/pet/tutorial'
 
 /**
  * 세이브를 들고 있는 유일한 곳.
@@ -28,6 +34,27 @@ const AUTOSAVE_INTERVAL_MS = 30_000
  * 판단으로 바뀌므로, 한 곳에서 정해야 글자와 동작이 어긋나지 않는다.
  */
 export type ActionKind = 'feed' | 'wash' | 'pat' | 'sleep' | 'wake'
+
+/**
+ * 돌봄 행동이 튜토리얼에 알리는 사건.
+ *
+ * **상태를 보고 추측하지 않고 무슨 일이 있었는지를 넘긴다.** "청결이 100이면
+ * 씻은 것"으로 판정하면 새 펫은 이미 청결 100 이라 3단계가 즉시 통과한다
+ * (tutorial.ts 의 TutorialEvent 주석). 재우기·쓰다듬기는 어느 단계도 끝내지
+ * 않으므로 null 이다.
+ */
+function tutorialEventFor(kind: ActionKind): TutorialEvent | null {
+  switch (kind) {
+    case 'feed':
+      return 'fed'
+    case 'wash':
+      return 'washed'
+    case 'pat':
+    case 'sleep':
+    case 'wake':
+      return null
+  }
+}
 
 /**
  * 종류에 맞는 액션 함수를 고른다.
@@ -85,9 +112,43 @@ export interface UsePetResult {
    * 아직 없으면(이름 입력 전) null 이다.
    */
   finishGame: (game: MinigameId, score: number) => Settlement | null
+  /**
+   * 상점에서 하나 산다. 돈이 모자라면 거절이고 이유가 message 에 들어 있다.
+   *
+   * 성공하면 튜토리얼 5단계가 넘어간다 — 그 판단은 tutorial.ts 가 하고 여기서는
+   * "샀다"는 사건만 넘긴다.
+   */
+  buyItem: (item: ItemId) => PurchaseOutcome | null
+  /** 가방에서 꺼내 방에 놓는다. 좌표는 논리 픽셀 왼쪽 위. */
+  placeFurniture: (item: FurnitureId, x: number, y: number) => DecorOutcome | null
+  /** 이미 놓인 것을 옮긴다. */
+  moveFurniture: (index: number, x: number, y: number) => DecorOutcome | null
+  /** 방에서 빼서 가방으로 되돌린다. */
+  pickUpFurniture: (index: number) => DecorOutcome | null
+  /**
+   * '확인'으로 넘어가는 단계를 넘긴다.
+   *
+   * 사건 이름을 화면이 고르지 않게 이 한 함수만 내보낸다. 나머지 사건(먹임 ·
+   * 씻김 · 놀았음 · 삼)은 그 행동을 한 함수가 스스로 알린다.
+   */
+  confirmTutorial: () => void
+  /** 남은 단계를 건너뛴다. 건너뛸 수 있는지의 판단은 tutorial.ts 의 canSkip 이 한다. */
+  skipTutorial: () => void
+  /**
+   * 튜토리얼이 방금 끝난 순간의 시각. 아직이면 null.
+   *
+   * 값이 바뀌는 것 자체가 신호다. 화면은 이 값이 생길 때 완료 연출을 한 번
+   * 띄운다 — done 플래그를 보면 새로고침할 때마다 다시 축하한다.
+   */
+  tutorialFinishedAt: number | null
   /** 개발 전용 시간 점프. M1 완료 기준을 손으로 확인하는 수단이다. */
   jump: (ms: number) => void
-  /** 개발 전용 물건 지급. 상점·튜토리얼(M4)이 없어 음식을 얻을 길이 없다. */
+  /**
+   * 개발 전용 물건 지급.
+   *
+   * M4 에서 상점이 열려 코인으로 살 수 있게 됐지만 이 경로는 남긴다. 돌봄 규칙만
+   * 확인하려는데 매번 미니게임으로 코인을 벌어야 하면 확인 한 번이 몇 분짜리가 된다.
+   */
   grant: (item: ItemId, count: number) => void
   dismissReport: () => void
 }
@@ -111,6 +172,7 @@ export function usePet(): UsePetResult {
   const [report, setReport] = useState<ElapsedReport | null>(null)
   const [recovered, setRecovered] = useState<string | null>(null)
   const [persistError, setPersistError] = useState<string | null>(null)
+  const [tutorialFinishedAt, setTutorialFinishedAt] = useState<number | null>(null)
 
   // 30초 타이머와 visibilitychange 핸들러는 한 번만 붙이고 싶은데 그 안에서
   // 최신 세이브를 봐야 한다. 상태를 의존성에 넣으면 세이브가 바뀔 때마다
@@ -262,11 +324,31 @@ export function usePet(): UsePetResult {
       // 출석 코인 지급이 그 안에 있어서, 건너뛰면 부화 직후 코인이 0이었다가 다음
       // 접속에야 30이 들어온다. 명세 §7 의 "일일 첫 접속"은 첫 세션도 포함한다.
       const now = Date.now()
-      const fresh = applyElapsed(createSave(name, now), now)
+
+      // **튜토리얼을 여는 것은 여기 한 곳뿐이다.** 2단계(먹이기)는 아무도 "들어가지"
+      // 않는 단계라 — 세이브가 거기서 시작한다 — advance() 만으로는 진입 지급인
+      // 사과 3개를 줄 경로가 없다. 그 지급이 빠지면 먹일 것도 살 것도 없이 2단계에서
+      // 막힌다. 지급 규칙 자체는 tutorial.ts 안에 있고, 화면은 시작을 알릴 뿐이다.
+      const fresh = applyElapsed(startTutorial(createSave(name, now)), now)
       commit(fresh.next, null)
     },
     [commit],
   )
+
+  /**
+   * 사건 하나를 튜토리얼에 알린다.
+   *
+   * 지금 단계를 끝내는 사건이 아니면 tutorial.ts 가 세이브를 그대로 돌려주므로,
+   * 부르는 쪽은 지금이 몇 단계인지 몰라도 된다. 그게 이 모듈이 상태 머신인
+   * 이유다 — 화면이 단계를 세면 그 판단이 곧 두 벌이 된다.
+   */
+  const notifyTutorial = useCallback((current: PetSave, event: TutorialEvent): PetSave => {
+    const next = advance(current, event)
+    // done 이 켜지는 순간만 잡는다. done 플래그 자체를 보면 새로고침할 때마다
+    // 완료 축하가 다시 뜬다.
+    if (!current.tutorial.done && next.tutorial.done) setTutorialFinishedAt(Date.now())
+    return next
+  }, [])
 
   /**
    * 돌봄 행동.
@@ -289,12 +371,20 @@ export function usePet(): UsePetResult {
       const outcome = runAction(fresh.next, kind, food, now)
       if (!outcome) return null
 
+      // 실제로 통한 행동만 튜토리얼에 알린다. 사과가 없어 거절당한 먹이기까지
+      // '먹였다'로 넘기면 가방이 빈 채로 2단계가 통과한다.
+      const event = outcome.changed ? tutorialEventFor(kind) : null
+      const next = event === null ? outcome.next : notifyTutorial(outcome.next, event)
+
       // 거절(changed:false)이어도 커밋한다. outcome.next 는 경과가 반영된
       // 세이브이므로, 버리면 방금 지나간 시간이 없던 일이 된다.
-      commit(outcome.next, null)
-      return outcome
+      commit(next, null)
+
+      // 커밋한 세이브를 그대로 돌려준다. outcome.next 를 그냥 내보내면 튜토리얼이
+      // 넘어간 뒤의 세이브와 화면이 받은 세이브가 갈린다.
+      return { ...outcome, next }
     },
-    [commit],
+    [commit, notifyTutorial],
   )
 
   /**
@@ -322,6 +412,10 @@ export function usePet(): UsePetResult {
    *
    * 리포트는 버린다. 복귀 카드는 화면에 들어오는 순간에만 뜬다 — 게임이 끝날
    * 때마다 "12시간 만이야!"가 뜨면 안 된다.
+   *
+   * 튜토리얼 중이면 에너지를 되돌린다(§9 "튜토리얼 판은 에너지를 소모하지 않는다").
+   * 판정도 되돌리기도 tutorial.ts 가 하고, 여기서는 정산 전후를 넘겨줄 뿐이다 —
+   * 정산은 계속 튜토리얼을 모른다.
    */
   const finishGame = useCallback(
     (game: MinigameId, score: number): Settlement | null => {
@@ -330,12 +424,93 @@ export function usePet(): UsePetResult {
 
       const now = Date.now()
       const fresh = applyElapsed(current, now)
-      const settlement = settle(fresh.next, game, score, now)
-      commit(settlement.next, null)
-      return settlement
+      const settled = settle(fresh.next, game, score, now)
+      const settlement: Settlement = {
+        ...settled,
+        next: keepTutorialEnergy(fresh.next, settled.next),
+      }
+
+      // 점수가 0 이어도 한 판을 끝낸 것이다. 명세 §9 의 4단계 조건은 "게임 종료"
+      // 이지 "몇 점 이상"이 아니다 — 첫 판에서 못한 사람이 튜토리얼에 갇힌다.
+      const next = notifyTutorial(settlement.next, 'played')
+      commit(next, null)
+      return { ...settlement, next }
+    },
+    [commit, notifyTutorial],
+  )
+
+  /**
+   * 상점 구매.
+   *
+   * 돌봄 액션과 같은 이유로 applyElapsed 를 먼저 지난다. 상점을 오래 켜 둔 채
+   * 사면 그동안의 감소가 통째로 사라진다.
+   */
+  const buyItem = useCallback(
+    (item: ItemId): PurchaseOutcome | null => {
+      const current = saveRef.current
+      if (!current) return null
+
+      const fresh = applyElapsed(current, Date.now())
+      const outcome = buy(fresh.next, item)
+      const next = outcome.changed ? notifyTutorial(outcome.next, 'bought') : outcome.next
+
+      commit(next, null)
+      return { ...outcome, next }
+    },
+    [commit, notifyTutorial],
+  )
+
+  /**
+   * 가구 배치.
+   *
+   * 세 함수가 같은 모양이라 하나로 묶었다. **applyElapsed 를 지나지 않는다** —
+   * 배치는 펫의 상태를 건드리지 않고, 여기서까지 경과를 반영하면 가구를 끌어
+   * 옮기는 동안 게이지가 줄어드는 것처럼 보인다(손을 뗄 때마다 한 번씩 반영된다).
+   * 시간은 30초 타이머와 화면 복귀가 따라잡는다.
+   */
+  const runDecor = useCallback(
+    (run: (current: PetSave) => DecorOutcome): DecorOutcome | null => {
+      const current = saveRef.current
+      if (!current) return null
+
+      const outcome = run(current)
+      commit(outcome.next, null)
+      return outcome
     },
     [commit],
   )
+
+  const placeFurniture = useCallback(
+    (item: FurnitureId, x: number, y: number) => runDecor((current) => place(current, item, x, y)),
+    [runDecor],
+  )
+
+  const moveFurniture = useCallback(
+    (index: number, x: number, y: number) => runDecor((current) => moveTo(current, index, x, y)),
+    [runDecor],
+  )
+
+  const pickUpFurniture = useCallback(
+    (index: number) => runDecor((current) => pickUp(current, index)),
+    [runDecor],
+  )
+
+  const confirmTutorial = useCallback(() => {
+    const current = saveRef.current
+    if (!current) return
+    commit(notifyTutorial(current, 'confirm'), null)
+  }, [commit, notifyTutorial])
+
+  const skipTutorial = useCallback(() => {
+    const current = saveRef.current
+    if (!current) return
+
+    const next = skip(current)
+    // 스킵도 완료다. 남은 단계를 건너뛰고 완료 보상까지 정산하는 것이 skip 의
+    // 계약이므로, 화면은 끝까지 한 사람과 같은 축하를 본다.
+    if (!current.tutorial.done && next.tutorial.done) setTutorialFinishedAt(Date.now())
+    commit(next, null)
+  }, [commit])
 
   const jump = useCallback(
     (ms: number) => {
@@ -391,6 +566,13 @@ export function usePet(): UsePetResult {
     act,
     checkPlay,
     finishGame,
+    buyItem,
+    placeFurniture,
+    moveFurniture,
+    pickUpFurniture,
+    confirmTutorial,
+    skipTutorial,
+    tutorialFinishedAt,
     jump,
     grant,
     dismissReport,

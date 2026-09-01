@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { PetSave } from '../types'
 import { localDateKey } from './clock'
 import { BACKUP_KEY_PREFIX, SAVE_KEY, createSave, loadSave, writeSave } from './save'
+import { TUTORIAL_START_STEP } from './tutorial'
 
 /**
  * 가짜 저장소.
@@ -47,7 +48,8 @@ describe('createSave', () => {
     expect(save.wallet.coins).toBe(0)
     expect(save.inventory).toEqual({})
     expect(save.sleep).toBeNull()
-    expect(save.tutorial).toEqual({ step: 0, done: false })
+    // 시작 단계 번호의 출처는 tutorial.ts 하나다. 여기에 0 을 적으면 두 벌이 된다.
+    expect(save.tutorial).toEqual({ step: TUTORIAL_START_STEP, done: false })
     expect(save.lastSeenAt).toBe(NOW)
   })
 
@@ -93,7 +95,7 @@ describe('왕복', () => {
       room: {
         wallpaper: 'wall-mint',
         floor: 'floor-wood',
-        placed: [{ item: 'bed', x: 24, y: 96 }],
+        placed: [{ item: 'plant', x: 24, y: 96 }],
       },
       sleep: { since: NOW - 3600_000 },
       tutorial: { step: 6, done: true },
@@ -223,6 +225,57 @@ describe('손상 복구', () => {
     expect(a.backupKey).not.toBe(b.backupKey)
     expect(storage.getItem(a.backupKey)).toBe(first)
     expect(storage.getItem(b.backupKey)).toBe(second)
+  })
+})
+
+describe('배치된 가구', () => {
+  it('모르는 가구 id 는 그 항목만 버리고 나머지 진행은 지킨다', () => {
+    // 가구를 추가한 신버전에서 놓은 세이브를 구버전 번들이 여는 상황이다. 여기서
+    // 세이브를 통째로 초기화하면 3주 키운 펫이 화분 하나 때문에 사라진다(§1).
+    const raw = corrupt((save) => {
+      const room = save.room as Record<string, unknown>
+      room.placed = [
+        { item: 'plant', x: 10, y: 20 },
+        { item: 'sofa', x: 30, y: 40 },
+      ]
+      save.wallet = { coins: 320 }
+    })
+    const storage = fakeStorage({ [SAVE_KEY]: raw })
+
+    const result = loadSave(storage, NOW)
+
+    expect(result.kind).toBe('ok')
+    if (result.kind !== 'ok') return
+    expect(result.save.room.placed).toEqual([{ item: 'plant', x: 10, y: 20 }])
+    expect(result.save.wallet.coins).toBe(320)
+  })
+
+  it('배치 항목의 좌표가 숫자가 아니면 손상으로 본다', () => {
+    // 모르는 id 와 달리 이건 버전이 오르며 생길 수 있는 모양이 아니라 깨진 값이다.
+    const raw = corrupt((save) => {
+      const room = save.room as Record<string, unknown>
+      room.placed = [{ item: 'plant', x: '왼쪽', y: 20 }]
+    })
+    const storage = fakeStorage({ [SAVE_KEY]: raw })
+
+    expect(loadSave(storage, NOW).kind).toBe('recovered')
+  })
+})
+
+describe('튜토리얼 단계', () => {
+  it('정수가 아닌 step 은 잘라서 들인다 — 세이브를 버리지 않는다', () => {
+    // 소수 step 은 배열 인덱스로 쓰이는 순간 undefined 가 되어 화면을 죽인다
+    // (tutorial.ts 의 currentStep). 그렇다고 초기화하기엔 너무 값싼 필드다.
+    const raw = corrupt((save) => {
+      save.tutorial = { step: 2.5, done: false }
+    })
+    const storage = fakeStorage({ [SAVE_KEY]: raw })
+
+    const result = loadSave(storage, NOW)
+
+    expect(result.kind).toBe('ok')
+    if (result.kind !== 'ok') return
+    expect(result.save.tutorial.step).toBe(2)
   })
 })
 

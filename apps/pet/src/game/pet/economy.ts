@@ -81,6 +81,30 @@ export const FOODS = {
   cake: { price: 60, hunger: 70, mood: 10, exp: 12, label: '케이크' },
 } as const satisfies Record<string, FoodSpec>
 
+export interface FurnitureSpec {
+  readonly price: number
+  readonly label: string
+}
+
+/**
+ * 상점에서 파는 가구.
+ *
+ * 가격을 30~150 으로 벌려 둔 것은 **일일 코인 상한이 300** 이기 때문이다(§7).
+ * 싼 것은 하루에 몇 개씩 살 수 있고 비싼 것은 며칠을 모아야 한다. 전부 하루치로
+ * 살 수 있으면 상점이 첫날에 소진되고, 전부 며칠치면 처음 며칠이 텅 빈다.
+ */
+export const FURNITURE = {
+  cushion: { price: 30, label: '쿠션' },
+  plant: { price: 40, label: '화분' },
+  vase: { price: 50, label: '꽃병' },
+  frame: { price: 60, label: '액자' },
+  clock: { price: 70, label: '벽시계' },
+  lamp: { price: 80, label: '스탠드' },
+  teddy: { price: 90, label: '곰인형' },
+  shelf: { price: 120, label: '책장' },
+  fishbowl: { price: 150, label: '어항' },
+} as const satisfies Record<string, FurnitureSpec>
+
 /**
  * 포만감이 이 값 이상일 때 먹이면 스탯만 오르고 EXP 는 0 이다.
  *
@@ -140,6 +164,43 @@ export function stageForLevel(level: number): Stage {
 
 export const DAILY_CHECKIN_COIN = 30
 export const TUTORIAL_COMPLETE_COIN = 100
+
+/**
+ * 튜토리얼 2단계 진입 지급. 먹일 것이 없으면 2단계에서 그대로 막힌다(§9).
+ *
+ * 3개인 것은 한 번 먹여 보고도 두 번 더 해 볼 여유를 남기기 위해서다. 1개면
+ * 실수로 배부를 때 먹여 EXP 0 을 받은 사람이 남은 튜토리얼을 빈손으로 간다.
+ *
+ * 개발용 지급 버튼(App.tsx)도 이 값을 쓴다. 같은 개수라는 사실을 주석으로만
+ * 적어 두면 한쪽을 고치는 순간 그 주석이 거짓이 된다.
+ */
+export const TUTORIAL_APPLE_COUNT = 3
+
+/**
+ * 튜토리얼 5단계 진입 지급(§9). 가장 싼 가구(쿠션 30)와 음식을 살 수 있는 액수다.
+ *
+ * **§9 는 "코인 100 을 보장한다"고 적었지만 구현은 하한이 아니라 진입 지급이다.**
+ * 하한으로 두려면 정산이 "지금 몇 단계인가"를 물어야 하고, 그러면 §7 의 상한·벌칙
+ * 규칙과 튜토리얼 규칙이 한 함수 안에서 섞인다. 명세 쪽 문장을 지급으로 고쳐 둘을
+ * 맞췄다(§9 · §14 의 M4 기록).
+ */
+export const TUTORIAL_START_COIN = 100
+
+/**
+ * 튜토리얼을 시작할 때 세우는 배고픔·청결.
+ *
+ * **가득 찬 게이지로 시작하면 2·3단계가 자기가 시킨 것을 시연하지 못한다.** 새
+ * 펫은 배고픔·청결이 100 인데(save.ts 의 createSave), 2단계가 강조한 배고픔
+ * 게이지는 사과를 먹여도 100 에서 잘려 1px 도 움직이지 않고 과식 판정
+ * (OVEREAT_EXP_THRESHOLD 90)에 걸려 "배부른데도 먹었어요"가 뜬다. 3단계도
+ * 같다(OVERCLEAN_EXP_THRESHOLD 70). 두 값 모두 그 문턱 아래로 내려 두어야 첫
+ * 행동에서 게이지가 눈에 띄게 차오르고 EXP 도 붙는다(§14 "값이 변할 때 보간되는가").
+ *
+ * 튜토리얼을 지나면 다시 채워 주지 않는다. 여기서 깎은 만큼은 사과 3개로
+ * 되돌릴 수 있는 폭이다.
+ */
+export const TUTORIAL_START_HUNGER = 60
+export const TUTORIAL_START_CLEAN = 50
 
 /**
  * 미니게임으로 하루에 벌 수 있는 코인 상한.

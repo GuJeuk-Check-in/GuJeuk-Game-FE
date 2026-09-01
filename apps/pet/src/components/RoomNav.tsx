@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import type { ReactNode, TouchEvent } from 'react'
 import type { RoomDef } from '../game/rooms'
+import { highlightAttrs } from './highlight'
 
 /**
  * 스와이프로 인정하는 최소 가로 이동(px).
@@ -32,6 +33,21 @@ export interface RoomNavProps {
   /** 화살표에 붙일 이웃 방 이름. rooms.ts 의 roomAt 이 끝에서 순환시킨다. */
   prevLabel: string
   nextLabel: string
+  /**
+   * 이웃 방이 아직 잠겨 있는가(§3 의 놀이터·상점).
+   *
+   * 잠겼어도 **버튼은 그대로 눌린다.** 눌리지 않는 화살표만 두면 왜 안 되는지
+   * 알 수 없다 — 이유는 부르는 쪽이 띄운다(§14 "거절도 반응인가").
+   */
+  prevLocked?: boolean
+  nextLocked?: boolean
+  /**
+   * 스와이프로도 방을 옮길 수 있는가.
+   *
+   * 배치 모드에서는 끈다. 가구를 끄는 손짓이 그대로 스와이프 조건을 만족해서,
+   * 화분을 옮기려 하면 방이 넘어간다.
+   */
+  swipe?: boolean
   onPrev: () => void
   onNext: () => void
   /** 방 화면 자체(캔버스). 스와이프를 받는 면이 이 아이를 감싼다. */
@@ -49,12 +65,22 @@ export interface RoomNavProps {
  * 그래야 안쪽에서 일어나는 탭이 그대로 살아, 나중에 펫을 직접 탭하는 조작을
  * 붙일 때 이 컴포넌트를 건드리지 않아도 된다.
  */
-export function RoomNav({ room, prevLabel, nextLabel, onPrev, onNext, children }: RoomNavProps) {
+export function RoomNav({
+  room,
+  prevLabel,
+  nextLabel,
+  prevLocked = false,
+  nextLocked = false,
+  swipe = true,
+  onPrev,
+  onNext,
+  children,
+}: RoomNavProps) {
   const origin = useRef<TouchOrigin | null>(null)
 
   const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
     // 손가락이 둘 이상이면 확대 동작이다. 방 이동으로 읽지 않는다.
-    if (event.touches.length !== 1) {
+    if (!swipe || event.touches.length !== 1) {
       origin.current = null
       return
     }
@@ -95,21 +121,38 @@ export function RoomNav({ room, prevLabel, nextLabel, onPrev, onNext, children }
 
       <p className="pt-roomnav__name">{room.label}</p>
 
+      {/* 튜토리얼 중에도 방은 옮길 수 있어야 한다. 2~5단계가 전부 다른 방에서
+          끝나므로, 화살표를 막으면 그 자리에서 진행이 멈춘다(TutorialOverlay). */}
       <button
         type="button"
         className="pt-roomnav__arrow pt-roomnav__arrow--prev"
+        data-pt-tutorial-pass=""
         onClick={onPrev}
-        aria-label={`이전 방: ${prevLabel}`}
+        aria-label={`이전 방: ${prevLabel}${prevLocked ? ' (잠김)' : ''}`}
       >
         <span aria-hidden="true">◀</span>
+        {prevLocked ? (
+          <span className="pt-roomnav__lock" aria-hidden="true">
+            🔒
+          </span>
+        ) : null}
       </button>
       <button
         type="button"
         className="pt-roomnav__arrow pt-roomnav__arrow--next"
+        data-pt-tutorial-pass=""
+        // 튜토리얼이 "옆 방으로 가라"를 가리킬 때 잡는 대상이다. 생 문자열 대신
+        // highlightAttrs 를 지나 어휘가 tutorial.ts 와 어긋나지 않게 한다.
+        {...highlightAttrs('roomNext')}
         onClick={onNext}
-        aria-label={`다음 방: ${nextLabel}`}
+        aria-label={`다음 방: ${nextLabel}${nextLocked ? ' (잠김)' : ''}`}
       >
         <span aria-hidden="true">▶</span>
+        {nextLocked ? (
+          <span className="pt-roomnav__lock" aria-hidden="true">
+            🔒
+          </span>
+        ) : null}
       </button>
     </div>
   )

@@ -10,6 +10,7 @@
 
 import type {
   DailyState,
+  FurnitureId,
   ItemId,
   PetSave,
   RoomDecor,
@@ -19,6 +20,9 @@ import type {
 } from '../types'
 import { STAT_MAX } from './economy'
 import { localDateKey } from './clock'
+// 시작 단계 번호의 출처는 tutorial.ts 하나다. 여기에 0 을 다시 적으면 그 숫자가
+// 두 벌이 된다(tutorial.ts 는 save.ts 를 참조하지 않으므로 순환이 없다).
+import { TUTORIAL_START_STEP } from './tutorial'
 
 export const SAVE_KEY = 'gj.pet.v1'
 
@@ -46,7 +50,33 @@ const DEFAULT_FLOOR = 'default'
  * 필요하고, satisfies 로 둘이 어긋나지 않게 묶어 둔다 — 물건을 추가하면서
  * 여기를 빠뜨리면 그 물건이 세이브에서 조용히 사라진다.
  */
-const ITEM_IDS = ['apple', 'bread', 'cake'] as const satisfies readonly ItemId[]
+const ITEM_IDS = [
+  'apple',
+  'bread',
+  'cake',
+  'plant',
+  'frame',
+  'lamp',
+  'cushion',
+  'clock',
+  'shelf',
+  'fishbowl',
+  'teddy',
+  'vase',
+] as const satisfies readonly ItemId[]
+
+/** 배치된 가구 검증용. ITEM_IDS 와 달리 음식은 놓을 수 없다. */
+const FURNITURE_IDS = [
+  'plant',
+  'frame',
+  'lamp',
+  'cushion',
+  'clock',
+  'shelf',
+  'fishbowl',
+  'teddy',
+  'vase',
+] as const satisfies readonly FurnitureId[]
 
 /**
  * 읽기 결과.
@@ -72,7 +102,9 @@ export function createSave(name: string, now: number): PetSave {
     inventory: {},
     room: { wallpaper: DEFAULT_WALLPAPER, floor: DEFAULT_FLOOR, placed: [] },
     sleep: null,
-    tutorial: { step: 0, done: false },
+    // 튜토리얼은 2단계부터다(§9 의 0·1 은 이 이름 입력 화면이 대신한다). 진입
+    // 지급은 startTutorial 이 붙이므로 여기서는 단계만 세운다.
+    tutorial: { step: TUTORIAL_START_STEP, done: false },
     daily: { date: localDateKey(now), coinsEarned: 0, checkedIn: false, pets: 0 },
     lastSeenAt: now,
   }
@@ -254,14 +286,21 @@ function readRoom(value: unknown): RoomDecor {
   const rawPlaced: unknown = room.placed
   if (!Array.isArray(rawPlaced)) fail('room.placed', '배열')
 
-  const placed = rawPlaced.map((entry: unknown, index: number) => {
+  const placed = rawPlaced.flatMap((entry: unknown, index: number) => {
     const path = `room.placed[${index}]`
     const item = readObject(entry, path)
-    return {
-      item: readString(item.item, `${path}.item`),
-      x: readNumber(item.x, `${path}.x`),
-      y: readNumber(item.y, `${path}.y`),
-    }
+
+    // 모르는 가구는 그 항목만 버린다. readInventory 와 같은 정책이다.
+    //
+    // 여기서 fail() 을 부르면 **세이브 전체가 백업 후 초기화된다** — 3주 키운
+    // 펫이 화분 하나 때문에 사라진다. 그리고 그 상황은 실재한다: FURNITURE_IDS 는
+    // 손으로 적은 목록이고 satisfies 는 누락을 검사하지 않으므로, 가구를 추가한
+    // 신버전에서 놓은 세이브를 캐시로 남은 구버전 번들이 열면 그대로 걸린다.
+    // 배치 목록을 통째로 잃는 것이 진행 전체를 잃는 것보다 싸다(§1).
+    const id = readFurnitureId(item.item, `${path}.item`)
+    if (id === null) return []
+
+    return [{ item: id, x: readNumber(item.x, `${path}.x`), y: readNumber(item.y, `${path}.y`) }]
   })
 
   return {
@@ -269,6 +308,19 @@ function readRoom(value: unknown): RoomDecor {
     floor: readString(room.floor, 'room.floor'),
     placed,
   }
+}
+
+/**
+ * 배치된 가구 id 를 확인한다. 모르는 id 면 null 이고, 부르는 쪽이 그 항목을 버린다.
+ *
+ * 문자열이기만 하면 통과시키면, 이름이 바뀌거나 손으로 고친 세이브에 없는 가구가
+ * 들어와 렌더링이 그 자리에서 죽는다. 세이브를 읽는 시점에 걸러야 화면이 뜬다.
+ * 다만 **걸러 내기지 세이브 폐기가 아니다** — 이유는 readRoom 에 적었다.
+ */
+function readFurnitureId(value: unknown, path: string): FurnitureId | null {
+  const id = readString(value, path)
+  const known = (FURNITURE_IDS as readonly string[]).includes(id)
+  return known ? (id as FurnitureId) : null
 }
 
 function readSleep(value: unknown): SleepState | null {
@@ -281,7 +333,10 @@ function readSleep(value: unknown): SleepState | null {
 function readTutorial(value: unknown): TutorialState {
   const tutorial = readObject(value, 'tutorial')
   return {
-    step: readNumber(tutorial.step, 'tutorial.step'),
+    // 단계는 배열 인덱스라 정수여야 한다(tutorial.ts). 손으로 고친 2.5 같은 값을
+    // 그대로 들이면 그 세이브는 화면이 뜨지 않는데, 손상으로 보고 초기화하기에는
+    // 너무 값싼 필드다 — 잘라 넣으면 진행도 화면도 지킨다.
+    step: Math.trunc(readNumber(tutorial.step, 'tutorial.step')),
     done: readBoolean(tutorial.done, 'tutorial.done'),
   }
 }

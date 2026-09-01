@@ -6,6 +6,13 @@ import type { FoodId, ItemId } from '../game/types'
 
 export interface InventorySheetProps {
   inventory: Partial<Record<ItemId, number>>
+  /**
+   * 상점이 열려 있는가(§3 의 튜토리얼 5단계 해금).
+   *
+   * 빈 가방 문구가 갈리는 유일한 이유다. 판정은 tutorial.ts 의 isRoomUnlocked
+   * 한 곳에서 하고 여기는 결과만 받는다 — 시트가 단계를 세면 해금 규칙이 두 벌이 된다.
+   */
+  shopUnlocked: boolean
   /** 고른 음식을 먹인다. 고른 순간 시트는 닫힌다. */
   onPick: (food: FoodId) => void
   onClose: () => void
@@ -20,7 +27,7 @@ export interface InventorySheetProps {
  * **가진 게 없으면 그 사실을 그대로 보여준다.** 빈 시트를 띄우거나 버튼을
  * 비활성으로만 두면 "음식이 없다"는 것과 "기능이 고장 났다"를 구분할 수 없다.
  */
-export function InventorySheet({ inventory, onPick, onClose }: InventorySheetProps) {
+export function InventorySheet({ inventory, shopUnlocked, onPick, onClose }: InventorySheetProps) {
   const owned = FOOD_IDS.filter((id) => (inventory[id] ?? 0) > 0)
 
   return (
@@ -62,8 +69,13 @@ export function InventorySheet({ inventory, onPick, onClose }: InventorySheetPro
             })}
           </ul>
         ) : (
+          // 다음에 무엇을 하면 되는지를 정확히 말한다(§14 "거절도 반응인가").
+          // 상점은 튜토리얼 5단계에 열리므로, 열린 뒤에도 "아직 열리지 않았어요"를
+          // 띄우면 화면이 사실과 반대되는 말을 한다.
           <p className="pt-sheet__empty">
-            가방이 비었어요. 음식은 상점에서 살 수 있게 되는데, 상점은 아직 열리지 않았어요.
+            {shopUnlocked
+              ? '가방이 비었어요. 상점에서 음식을 살 수 있어요.'
+              : '가방이 비었어요. 튜토리얼을 조금 더 진행하면 상점이 열려요.'}
           </p>
         )}
 

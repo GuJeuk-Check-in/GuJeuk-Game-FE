@@ -3,9 +3,13 @@ import type { CanvasStage } from '@gujuck/game-core'
 import { PALETTE_DARKEST, PALETTE_LIGHTEST } from './palette'
 import { DEFAULT_ROOM, ROOMS, roomIndex } from './rooms'
 import type { RoomDef } from './rooms'
-import { PET_SPRITE, loadSprites } from './sprites'
+import { PET_SPRITE, furnitureSpriteName, loadSprites } from './sprites'
 import type { SpriteSet } from './sprites'
-import type { RoomId } from './types'
+// 배치의 한 칸 크기와 놓을 수 있는 범위는 규칙 모듈이 정한다. 렌더러가 자기 값을
+// 따로 들면 규칙이 허용하는 자리와 화면이 그리는 자리가 갈린다(decor.ts 참조).
+// 렌더러 → 규칙 방향의 import 라 §11 의 계층을 거스르지 않는다.
+import { DECOR_AREA, FURNITURE_SIZE } from './pet/decor'
+import type { FurnitureId, RoomDecor, RoomId } from './types'
 
 /**
  * 논리 해상도. 방 배경 에셋이 정확히 이 크기로 그려져 있다.
@@ -60,6 +64,57 @@ const BOUNCE_HOPS = 2
  */
 const LETTERBOX_CSS = `#${PALETTE_DARKEST}`
 const ERROR_TEXT_CSS = `#${PALETTE_LIGHTEST}`
+
+/**
+ * 배치 모드의 점선이 쓰는 밝은 색.
+ *
+ * 값은 ERROR_TEXT_CSS 와 같지만 이름을 따로 둔다. 뜻이 다른 두 쓰임이 한 이름을
+ * 나눠 쓰면, 나중에 오류 문구 색만 바꾸려는 사람이 가구 배치 테두리까지 바꾼다.
+ */
+const HIGHLIGHT_CSS = `#${PALETTE_LIGHTEST}`
+
+/**
+ * 가구를 놓을 수 있는 방.
+ *
+ * 거실 하나뿐이다(명세 §3 의 "거실 — 펫 쓰다듬기, 가구 배치"). 방마다 배치를
+ * 따로 두려면 세이브의 room.placed 가 방별로 갈라져야 하는데, 그건 스키마 변경
+ * 이고 마이그레이션이다(§10). 지금 필요하지 않은 값이다.
+ */
+export const DECOR_ROOM: RoomId = 'living'
+
+/**
+ * 배치 모드의 점선 테두리(marching ants).
+ *
+ * 한 칸이 1px 인 점선이 1초에 ANT_SPEED_PX 만큼 흐른다. **소수 좌표를 쓰지 않고
+ * 정수 픽셀만 옮긴다** — 도트 화면에서 소수로 흐르는 점선은 프레임마다 흐려졌다
+ * 선명해졌다 한다(ROOM_SLIDE_SEC 주석과 같은 이유).
+ */
+const ANT_DASH = 3
+const ANT_PERIOD = 6
+const ANT_SPEED_PX = 9
+
+/** 끌고 있는 가구는 이만큼 떠오른다. 손에 들렸다는 신호이고, 정수 픽셀이다. */
+const DRAG_LIFT_PX = 3
+
+/** 세이브에 들어 있는 배치 한 칸. types.ts 의 RoomDecor 에서 그대로 가져온다. */
+export type PlacedFurniture = RoomDecor['placed'][number]
+
+/**
+ * 배치 중에만 있는, 세이브에 없는 상태.
+ *
+ * **끌고 있는 좌표를 세이브에 쓰지 않는 이유**: 세이브가 바뀔 때마다
+ * localStorage 에 JSON 한 덩어리를 쓴다(usePet). 손가락을 따라 매 프레임 쓰면
+ * 초당 60번 직렬화가 돌고, 그동안 화면이 끊긴다. 손을 뗄 때 한 번만 규칙
+ * 모듈(decor.ts)을 부르고, 끄는 동안의 그림은 여기서만 만든다.
+ */
+export interface DecorEdit {
+  /** 고른 가구의 인덱스(save.room.placed 기준). 고른 게 없으면 null. */
+  selected: number | null
+  /** 지금 끌고 있는 것. 그 인덱스는 저장된 자리 대신 이 좌표에 그린다. */
+  drag: { index: number; x: number; y: number } | null
+  /** 가방에서 꺼내 손끝을 따라다니는 것. 아직 방에 놓이지 않았다. */
+  ghost: { item: FurnitureId; x: number; y: number } | null
+}
 
 interface Viewport {
   /** 논리 픽셀 하나가 장치 픽셀 몇 개인지. 반드시 정수다. */
@@ -131,6 +186,15 @@ export class PetGame {
   /** 튀는 동작이 시작된 뒤 흐른 시간(초). 튀고 있지 않으면 null. */
   private bounceSec: number | null = null
 
+  /**
+   * 거실에 놓인 가구. **세이브를 직접 읽지 않는다** — 밖에서 setDecor 로 넣어
+   * 준다. 이 클래스가 세이브를 알게 되면 규칙과 그리기가 다시 붙는다.
+   */
+  private placed: readonly PlacedFurniture[] = []
+
+  /** 배치 모드일 때만 값이 있다. 아니면 null. */
+  private edit: DecorEdit | null = null
+
   constructor(stage: CanvasStage) {
     this.stage = stage
 
@@ -168,6 +232,7 @@ export class PetGame {
     // 코드가 붙었을 때 죽은 전환이 되살아나지 않는다.
     this.slide = null
     this.bounceSec = null
+    this.edit = null
     this.loop.destroy()
   }
 
@@ -229,6 +294,58 @@ export class PetGame {
   bounce(): void {
     if (this.disposed) return
     this.bounceSec = 0
+  }
+
+  /** 방에 놓인 가구를 통째로 갈아 끼운다. 세이브의 room.placed 를 그대로 넘긴다. */
+  setDecor(placed: readonly PlacedFurniture[]): void {
+    if (this.disposed) return
+    this.placed = placed
+  }
+
+  /** 배치 모드의 임시 상태. 모드를 나가면 null 을 넣는다. */
+  setDecorEdit(edit: DecorEdit | null): void {
+    if (this.disposed) return
+    this.edit = edit
+  }
+
+  /**
+   * 화면 좌표(클라이언트 픽셀)를 논리 좌표로 옮긴다.
+   *
+   * 배치 조작은 React 쪽 div 가 받는데, 그 div 는 배율도 레터박스 여백도 모른다.
+   * 그 계산을 화면이 다시 하면 viewport() 와 두 벌이 되어, 레터박스가 생기는
+   * 기기에서만 가구가 손끝에서 어긋나 놓인다. 배치는 이 클래스가 쥔다.
+   *
+   * 배율을 stage.dpr 이 아니라 캔버스 폭 대 실제 폭의 비로 재는 것은, CSS 로
+   * 캔버스가 늘어나 있는 경우까지 맞추기 위해서다.
+   */
+  toLogical(clientX: number, clientY: number): { x: number; y: number } {
+    const rect = this.stage.canvas.getBoundingClientRect()
+    const { scale, offsetX, offsetY } = this.viewport()
+
+    // 폭이 0 이면 아직 레이아웃 전이다. 0 으로 나누면 NaN 이 좌표로 흘러간다.
+    const perClient = rect.width > 0 ? this.stage.canvas.width / rect.width : 1
+
+    return {
+      x: Math.round(((clientX - rect.left) * perClient - offsetX) / scale),
+      y: Math.round(((clientY - rect.top) * perClient - offsetY) / scale),
+    }
+  }
+
+  /**
+   * 그 논리 좌표에 놓인 가구의 인덱스. 없으면 null.
+   *
+   * **뒤에서부터 본다.** 그리는 순서가 배열 순서라 나중 것이 위에 겹쳐 있고,
+   * 눈에 보이는 쪽이 집혀야 한다. 앞에서부터 찾으면 겹친 자리에서 밑에 깔린
+   * 가구가 집혀 "다른 게 움직인다".
+   */
+  hitTest(x: number, y: number): number | null {
+    for (let index = this.placed.length - 1; index >= 0; index -= 1) {
+      const spot = this.placed[index]
+      const inside =
+        x >= spot.x && x < spot.x + FURNITURE_SIZE && y >= spot.y && y < spot.y + FURNITURE_SIZE
+      if (inside) return index
+    }
+    return null
   }
 
   private update(dtSec: number): void {
@@ -307,8 +424,17 @@ export class PetGame {
 
     // 자연 크기로 그린다. 폭·높이를 지정해 늘리면 에셋이 360×640 이 아닐 때
     // 소수 배율로 늘어나 도트가 뭉개진다. 어긋나면 잘리는 편이 눈에 띈다.
-    if (slide !== null) ctx.drawImage(sprites.rooms[slide.from.asset], -dir * shift, 0)
+    if (slide !== null) {
+      const fromX = -dir * shift
+      ctx.drawImage(sprites.rooms[slide.from.asset], fromX, 0)
+      // 떠나는 방에도 가구를 그린다. 배경만 흘러나가고 가구가 그 자리에서
+      // 사라지면 거실을 나가는 순간 가구가 증발한 것처럼 보인다.
+      this.renderDecor(ctx, sprites, slide.from, fromX, false)
+    }
+
     ctx.drawImage(sprites.rooms[this.room.asset], roomX, 0)
+    // 가구는 배경 위, 펫 아래다. 펫 뒤에 두면 펫이 화분에 가려진다.
+    this.renderDecor(ctx, sprites, this.room, roomX, true)
 
     // 펫은 들어오는 방 위에만 그린다. 떠나는 방에도 그리면 전환 도중 펫이 화면에
     // 두 마리 보인다.
@@ -317,6 +443,108 @@ export class PetGame {
       roomX + this.room.anchor.x - PET_SPRITE.centerX,
       this.room.anchor.y - PET_SPRITE.feetY - this.petLift(),
     )
+  }
+
+  /**
+   * 방에 놓인 가구와 배치 모드의 표시.
+   *
+   * `live` 는 지금 보고 있는 방인지다. 전환 중 떠나는 방에는 가구만 그리고
+   * 선택 테두리나 손끝의 가구는 그리지 않는다 — 조작은 언제나 들어와 있는 방을
+   * 향하고, 두 방에 같은 테두리가 뜨면 어느 쪽을 만지고 있는지 알 수 없다.
+   */
+  private renderDecor(
+    ctx: CanvasRenderingContext2D,
+    sprites: SpriteSet,
+    room: RoomDef,
+    roomX: number,
+    live: boolean,
+  ): void {
+    if (room.id !== DECOR_ROOM) return
+
+    const edit = live ? this.edit : null
+
+    // 놓을 수 있는 범위를 먼저 알린다. 눌러도 안 놓이는 자리를 눌러 보고 알게
+    // 하지 않는다(§14 "거절도 반응인가").
+    if (edit !== null) {
+      this.renderAnts(
+        ctx,
+        roomX + DECOR_AREA.left - 2,
+        DECOR_AREA.top - 2,
+        DECOR_AREA.right - DECOR_AREA.left + FURNITURE_SIZE + 4,
+        DECOR_AREA.bottom - DECOR_AREA.top + FURNITURE_SIZE + 4,
+      )
+    }
+
+    this.placed.forEach((spot, index) => {
+      // 세 조건을 풀어 쓰는 것은 타입 좁히기 때문이다. `edit?.drag?.index === index`
+      // 로 물어도 컴파일러는 아래에서 edit.drag 가 null 이 아님을 알지 못한다.
+      const dragging =
+        edit !== null && edit.drag !== null && edit.drag.index === index ? edit.drag : null
+      const x = roomX + (dragging ? dragging.x : spot.x)
+      // 끌고 있는 것은 살짝 떠오른다. 손에 들렸다는 것이 이 3px 로 읽힌다.
+      const y = (dragging ? dragging.y : spot.y) - (dragging ? DRAG_LIFT_PX : 0)
+
+      ctx.drawImage(sprites.furniture[furnitureSpriteName(spot.item)], x, y)
+
+      // 고른 것과 끌고 있는 것에 테두리를 두른다. 어느 가구를 만지고 있는지가
+      // 보이지 않으면 "집기" 버튼이 무엇을 집는지 알 수 없다.
+      if (dragging !== null || edit?.selected === index) {
+        this.renderAnts(ctx, x - 1, y - 1, FURNITURE_SIZE + 2, FURNITURE_SIZE + 2)
+      }
+    })
+
+    // 가방에서 꺼낸 가구는 마지막에, 전부 위에 그린다. 손끝에 들린 것이 다른
+    // 가구 뒤로 숨으면 어디에 놓이는지 보이지 않는다.
+    const ghost = edit?.ghost
+    if (ghost) {
+      const x = roomX + ghost.x
+      const y = ghost.y - DRAG_LIFT_PX
+      ctx.drawImage(sprites.furniture[furnitureSpriteName(ghost.item)], x, y)
+      this.renderAnts(ctx, x - 1, y - 1, FURNITURE_SIZE + 2, FURNITURE_SIZE + 2)
+    }
+  }
+
+  /**
+   * 흐르는 점선 테두리.
+   *
+   * 배치 모드에서만 쓴다. 정지한 테두리로 두면 방 배경의 선과 구별되지 않아
+   * "지금 배치 중"이라는 신호가 되지 못한다. 흐르는 방향이 하나뿐이라 어지럽지
+   * 않고, 값싸다 — 한 변에 fillRect 가 몇 번 들어갈 뿐이다.
+   */
+  private renderAnts(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): void {
+    // 바탕을 먼저 깔고 그 위에 밝은 점선을 얹는다. 두 색을 번갈아 계산하는 것보다
+    // 짧고, 어두운 배경 위에서도 밝은 배경 위에서도 테두리가 읽힌다.
+    ctx.fillStyle = LETTERBOX_CSS
+    ctx.fillRect(x, y, width, 1)
+    ctx.fillRect(x, y + height - 1, width, 1)
+    ctx.fillRect(x, y, 1, height)
+    ctx.fillRect(x + width - 1, y, 1, height)
+
+    // 정수 픽셀로만 흐른다. 소수로 옮기면 점선이 프레임마다 흐려진다.
+    const phase = Math.floor(this.elapsedSec * ANT_SPEED_PX) % ANT_PERIOD
+    ctx.fillStyle = HIGHLIGHT_CSS
+
+    for (let at = -phase; at < width; at += ANT_PERIOD) {
+      const from = Math.max(0, at)
+      const to = Math.min(width, at + ANT_DASH)
+      if (to <= from) continue
+      ctx.fillRect(x + from, y, to - from, 1)
+      ctx.fillRect(x + width - to, y + height - 1, to - from, 1)
+    }
+
+    for (let at = -phase; at < height; at += ANT_PERIOD) {
+      const from = Math.max(0, at)
+      const to = Math.min(height, at + ANT_DASH)
+      if (to <= from) continue
+      ctx.fillRect(x + width - 1, y + from, 1, to - from)
+      ctx.fillRect(x, y + height - to, 1, to - from)
+    }
   }
 
   /**

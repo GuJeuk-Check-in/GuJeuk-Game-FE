@@ -11,7 +11,16 @@ export type Stats = Record<StatName, number>
 /** 상점과 인벤토리가 다루는 물건. 음식만 있는 것은 M1 범위이기 때문이다. */
 export type FoodId = 'apple' | 'bread' | 'cake'
 
-export type ItemId = FoodId
+/**
+ * 방에 놓는 가구. 먹는 것이 아니라 배치하는 것이라 FoodId 와 나눠 둔다.
+ *
+ * 둘을 한 타입으로 뭉치면 feed() 에 화분을 넘겨도 컴파일이 통과한다.
+ */
+export type FurnitureId =
+  'plant' | 'frame' | 'lamp' | 'cushion' | 'clock' | 'shelf' | 'fishbowl' | 'teddy' | 'vase'
+
+/** 가방에 들어갈 수 있는 것 전부. 음식은 먹고, 가구는 놓는다. */
+export type ItemId = FoodId | FurnitureId
 
 export type RoomId = 'living' | 'kitchen' | 'bath' | 'bed' | 'play' | 'shop'
 
@@ -32,9 +41,11 @@ export interface SleepState {
 }
 
 export interface RoomDecor {
+  /** 벽지·바닥은 M4 범위 밖이다. 방마다 그림을 새로 뽑아야 해서 자리만 잡아 둔다. */
   wallpaper: string
   floor: string
-  placed: readonly { item: string; x: number; y: number }[]
+  /** 거실에 놓인 가구. 좌표는 논리 픽셀(360×640)의 왼쪽 위 기준이다. */
+  placed: readonly { item: FurnitureId; x: number; y: number }[]
 }
 
 export interface TutorialState {

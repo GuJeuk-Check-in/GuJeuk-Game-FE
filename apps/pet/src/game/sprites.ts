@@ -4,6 +4,15 @@
 // 붙이는 해시(`pet.a1b2c3.png`)를 따라갈 수 없어, 개발 서버에서는 멀쩡하다가
 // 배포에서만 404 가 난다.
 
+import furnClockUrl from '../assets/furn-clock.png'
+import furnCushionUrl from '../assets/furn-cushion.png'
+import furnFishbowlUrl from '../assets/furn-fishbowl.png'
+import furnFrameUrl from '../assets/furn-frame.png'
+import furnLampUrl from '../assets/furn-lamp.png'
+import furnPlantUrl from '../assets/furn-plant.png'
+import furnShelfUrl from '../assets/furn-shelf.png'
+import furnTeddyUrl from '../assets/furn-teddy.png'
+import furnVaseUrl from '../assets/furn-vase.png'
 import itemAppleUrl from '../assets/item-apple.png'
 import itemBreadUrl from '../assets/item-bread.png'
 import itemCakeUrl from '../assets/item-cake.png'
@@ -29,6 +38,7 @@ import roomLivingUrl from '../assets/room-living.png'
 import roomPlayUrl from '../assets/room-play.png'
 import roomShopUrl from '../assets/room-shop.png'
 import { ROOMS } from './rooms'
+import type { FoodId, FurnitureId } from './types'
 
 /**
  * 방 배경 에셋 이름 → 파일 주소.
@@ -124,12 +134,75 @@ const PROP_ASSET_URLS: Record<PropSpriteName, string> = {
 }
 
 /**
+ * 방에 놓는 가구(48×48).
+ *
+ * **키는 파일 이름 그대로다**(`furn-plant`). 아이템·소품과 같은 규칙이라 네 표의
+ * 키 모양이 하나로 맞는다. 세이브에 들어가는 id 는 접두사가 없는 `plant` 이고,
+ * 둘 사이는 아래 furnitureSpriteName() 이 잇는다 — 부르는 쪽마다 문자열을 붙이면
+ * 오타가 런타임까지 살아 나간다.
+ */
+export const FURNITURE_SPRITE_NAMES = [
+  'furn-clock',
+  'furn-cushion',
+  'furn-fishbowl',
+  'furn-frame',
+  'furn-lamp',
+  'furn-plant',
+  'furn-shelf',
+  'furn-teddy',
+  'furn-vase',
+] as const
+
+export type FurnitureSpriteName = (typeof FURNITURE_SPRITE_NAMES)[number]
+
+const FURNITURE_ASSET_URLS: Record<FurnitureSpriteName, string> = {
+  'furn-clock': furnClockUrl,
+  'furn-cushion': furnCushionUrl,
+  'furn-fishbowl': furnFishbowlUrl,
+  'furn-frame': furnFrameUrl,
+  'furn-lamp': furnLampUrl,
+  'furn-plant': furnPlantUrl,
+  'furn-shelf': furnShelfUrl,
+  'furn-teddy': furnTeddyUrl,
+  'furn-vase': furnVaseUrl,
+}
+
+/**
+ * 세이브의 가구 id → 스프라이트 이름.
+ *
+ * 템플릿 리터럴 타입이라 **컴파일러가 검사한다.** FurnitureId 에 가구를 하나
+ * 더하면서 위 목록을 빠뜨리면 여기서 타입 오류가 난다 — 표를 손으로 맞추는 것과
+ * 달리, 어긋난 채로 빌드가 통과하는 경로가 없다.
+ */
+export function furnitureSpriteName(id: FurnitureId): FurnitureSpriteName {
+  return `furn-${id}`
+}
+
+/**
  * 아이템·소품 스프라이트의 한 변(px).
  *
  * 파이프라인이 전부 48×48 로 뽑는다(명세 §12.1). 충돌 상자를 만들 때 이 값을
  * 쓰라고 상수로 둔다 — 게임마다 48 을 손으로 적으면 크기를 바꿀 때 한 곳만 남는다.
+ * 가구도 같은 48×48 이라 배치 계산이 이 값을 그대로 쓴다.
  */
 export const PROP_SPRITE_SIZE = 48
+
+/**
+ * React 화면(상점·가방·꾸미기 바)이 `<img>` 로 걸 주소.
+ *
+ * 캔버스는 loadSprites() 가 준 HTMLImageElement 를 쓰지만, DOM 쪽은 주소만
+ * 있으면 된다. 브라우저가 같은 URL 을 다시 내려받지는 않으므로 두 경로가
+ * 겹쳐도 낭비가 없다. **주소를 컴포넌트에서 직접 import 하지 않는 이유**는 이
+ * 파일 첫머리와 같다 — 에셋 주소를 아는 곳이 늘어나면 파일 이름을 바꿀 때
+ * 빠뜨리는 곳이 생긴다.
+ */
+export function foodIconUrl(food: FoodId): string {
+  return ITEM_ASSET_URLS[`item-${food}`]
+}
+
+export function furnitureIconUrl(id: FurnitureId): string {
+  return FURNITURE_ASSET_URLS[furnitureSpriteName(id)]
+}
 
 /**
  * 한 벌로 다 불러온 스프라이트.
@@ -146,6 +219,8 @@ export interface SpriteSet {
   readonly items: Readonly<Record<ItemSpriteName, HTMLImageElement>>
   /** `prop-bomb` 처럼 파일 이름 그대로가 키다. */
   readonly props: Readonly<Record<PropSpriteName, HTMLImageElement>>
+  /** `furn-plant` 처럼 파일 이름 그대로가 키다. furnitureSpriteName() 으로 찾는다. */
+  readonly furniture: Readonly<Record<FurnitureSpriteName, HTMLImageElement>>
   /**
    * `items['item-apple']` 과 같은 이미지다. 표가 생기기 전부터 있던 이름이라
    * 남겨 둔다 — 같은 파일을 두 번 내려받지는 않는다.
@@ -234,14 +309,17 @@ function roomAssetNames(): string[] {
 }
 
 async function loadAll(): Promise<SpriteSet> {
-  const [pet, rooms, items, props] = await Promise.all([
+  const [pet, rooms, items, props, furniture] = await Promise.all([
     loadImage('pet', petUrl),
     loadTable(roomAssetNames(), (name) => ROOM_ASSET_URLS[name]),
     loadTable(ITEM_SPRITE_NAMES, (name) => ITEM_ASSET_URLS[name]),
     loadTable(PROP_SPRITE_NAMES, (name) => PROP_ASSET_URLS[name]),
+    // 가구도 첫 벌에 함께 기다린다. 거실에 이미 놓여 있는 가구가 방보다 늦게
+    // 도착하면 첫 프레임의 거실이 텅 빈 방으로 보였다가 뒤늦게 채워진다.
+    loadTable(FURNITURE_SPRITE_NAMES, (name) => FURNITURE_ASSET_URLS[name]),
   ])
 
-  return { rooms, pet, items, props, itemApple: items['item-apple'] }
+  return { rooms, pet, items, props, furniture, itemApple: items['item-apple'] }
 }
 
 let pending: Promise<SpriteSet> | null = null
