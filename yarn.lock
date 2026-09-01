@@ -1487,6 +1487,26 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@gujuck/pet@workspace:apps/pet":
+  version: 0.0.0-use.local
+  resolution: "@gujuck/pet@workspace:apps/pet"
+  dependencies:
+    "@gujuck/eslint-config": "workspace:*"
+    "@gujuck/game-core": "workspace:*"
+    "@gujuck/tsconfig": "workspace:*"
+    "@gujuck/ui": "workspace:*"
+    "@gujuck/vite-config": "workspace:*"
+    "@types/react": "npm:^18.3.12"
+    "@types/react-dom": "npm:^18.3.1"
+    eslint: "npm:^9.17.0"
+    pngjs: "npm:^7.0.0"
+    react: "npm:^18.3.1"
+    react-dom: "npm:^18.3.1"
+    typescript: "npm:^5.6.3"
+    vite: "npm:^5.4.11"
+  languageName: unknown
+  linkType: soft
+
 "@gujuck/tic-tac-toe@workspace:apps/tic-tac-toe":
   version: 0.0.0-use.local
   resolution: "@gujuck/tic-tac-toe@workspace:apps/tic-tac-toe"
@@ -3281,6 +3301,13 @@ __metadata:
   version: 4.0.5
   resolution: "picomatch@npm:4.0.5"
   checksum: 10c0/947bc6b6e1ff1e6c5aaf95b107a0839d12802f4f7b867663f67d47accba939ca1cb582cf99dfc30438efa1c4648ac5990967e783e8929c36b03e8440704ef1bd
+  languageName: node
+  linkType: hard
+
+"pngjs@npm:^7.0.0":
+  version: 7.0.0
+  resolution: "pngjs@npm:7.0.0"
+  checksum: 10c0/0d4c7a0fd476a9c33df7d0a2a73e1d56537628a668841f6995c2bca070cf30819f9254a64363266bc14ef2fee47659dd3b4f2b18eec7ab65143015139f497b38
   languageName: node
   linkType: hard
 

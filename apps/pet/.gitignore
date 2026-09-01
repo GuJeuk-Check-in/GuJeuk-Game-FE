@@ -1,0 +1,2 @@
+# pixelize.mjs 가 만드는 결과물. tools/raw/ 의 원본에서 언제든 다시 만들 수 있다.
+tools/out-*.png

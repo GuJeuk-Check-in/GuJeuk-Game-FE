@@ -24,6 +24,12 @@
       "runtimeExecutable": "yarn",
       "runtimeArgs": ["workspace", "@gujuck/archery", "dev"],
       "port": 5173
+    },
+    {
+      "name": "pet",
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": ["yarn", "workspace", "@gujuck/pet", "dev"],
+      "port": 5174
     }
   ]
 }

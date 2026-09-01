@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>펫타운 에셋 확인</title>
+    <!--
+      pixelize.mjs 가 뽑은 결과를 눈으로 판정하기 위한 페이지다.
+
+      숫자 검사(고유색·팔레트 밖 색·반투명 픽셀)는 스크립트가 이미 하고, 불합격이면
+      0 이 아닌 코드로 죽는다. 그래서 이 페이지는 숫자를 다시 세지 않는다 — 사람만
+      판정할 수 있는 것, 즉 "형태가 읽히는가"와 "세 장이 한 세트로 보이는가"만 본다.
+
+      캔버스로 픽셀을 읽지 않는 이유: file:// 로 열면 로컬 이미지가 캔버스를 오염시켜
+      getImageData 가 보안 오류로 죽는다. 서버를 띄우게 만들 만한 가치가 없다.
+
+      그냥 이 파일을 브라우저로 열면 된다.
+    -->
+    <style>
+      :root {
+        --bg: #fff7e4;
+        --fg: #28282e;
+        --line: #d9c8bf;
+      }
+      body.dark {
+        --bg: #28282e;
+        --fg: #fff7e4;
+        --line: #6c5671;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          14px/1.6 ui-monospace,
+          Menlo,
+          Consolas,
+          monospace;
+      }
+      /* 도트는 정수배 최근접으로만 확대한다. 보간이 끼면 판정 자체가 무의미해진다. */
+      img {
+        image-rendering: pixelated;
+        display: block;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0 0 4px;
+      }
+      h2 {
+        font-size: 13px;
+        margin: 32px 0 8px;
+        opacity: 0.7;
+        font-weight: normal;
+      }
+      .row {
+        display: flex;
+        gap: 24px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .cell {
+        border: 1px solid var(--line);
+      }
+      .stage {
+        position: relative;
+        width: 720px;
+        height: 1280px;
+        border: 1px solid var(--line);
+      }
+      .stage img {
+        position: absolute;
+      }
+      .stage .room {
+        left: 0;
+        top: 0;
+        width: 720px;
+        height: 1280px;
+      }
+      /* 논리 좌표 × 2. 게임에서 쓸 배치와 같은 자리에 둔다. */
+      .stage .pet {
+        left: 232px;
+        top: 848px;
+        width: 256px;
+        height: 256px;
+      }
+      .stage .item {
+        left: 552px;
+        top: 1096px;
+        width: 96px;
+        height: 96px;
+      }
+      label {
+        cursor: pointer;
+        user-select: none;
+      }
+      ul {
+        padding-left: 18px;
+        max-width: 60ch;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>펫타운 에셋 확인</h1>
+    <label
+      ><input type="checkbox" onchange="document.body.classList.toggle('dark')" /> 어두운
+      배경</label
+    >
+
+    <h2>합성 — 세 장이 한 세트로 보이는가 (논리 360×640 을 ×2 로)</h2>
+    <div class="stage">
+      <img class="room" src="out-room.png" alt="방" />
+      <img class="pet" src="out-pet.png" alt="펫" />
+      <img class="item" src="out-item.png" alt="아이템" />
+    </div>
+
+    <h2>펫 — ×1 / ×2 / ×4</h2>
+    <div class="row">
+      <img class="cell" src="out-pet.png" width="128" alt="펫 ×1" />
+      <img class="cell" src="out-pet.png" width="256" alt="펫 ×2" />
+      <img class="cell" src="out-pet.png" width="512" alt="펫 ×4" />
+    </div>
+
+    <h2>아이템 — ×2 / ×4 / ×8</h2>
+    <div class="row">
+      <img class="cell" src="out-item.png" width="96" alt="아이템 ×2" />
+      <img class="cell" src="out-item.png" width="192" alt="아이템 ×4" />
+      <img class="cell" src="out-item.png" width="384" alt="아이템 ×8" />
+    </div>
+
+    <h2>무엇을 볼 것인가</h2>
+    <ul>
+      <li>펫의 실루엣이 배경에서 즉시 분리되는가. 외곽선이 끊긴 곳은 없는가.</li>
+      <li>눈·입이 형태로 읽히는가. 뭉개져 얼룩으로 보이면 최종 크기가 작은 것이다.</li>
+      <li>세 장의 외곽선 두께와 색 온도가 같은가. 하나만 튀면 그 에셋만 다시 뽑는다.</li>
+      <li>벽·바닥에 흩뿌려진 점이 없는가. 있으면 <code>--despeckle</code> 을 켠다.</li>
+      <li>어두운 배경으로 바꿔도 밝은 에셋의 가장자리가 사라지지 않는가.</li>
+    </ul>
+  </body>
+</html>
