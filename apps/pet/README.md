@@ -17,12 +17,25 @@
 AI로 큰 그림을 생성해 도트로 줄이는 도구가 `tools/`에 있다. 설계 근거는 명세 §12.
 
 ```
-tools/raw/       생성 원본 (누끼까지 끝난 것). 지우지 마라 — 팔레트를 바꿔
-                 다시 뽑는 데 이미지 생성 비용이 들지 않는다
+tools/raw/           생성 원본. 지우지 마라 — 다시 만들려면 크레딧이 든다
+tools/sliced/        시트에서 잘라낸 조각 (gitignore. 시트에서 다시 만든다)
+tools/slice.mjs      시트를 물건별로 쪼갠다 + 배경 제거
 tools/pixelize.mjs   축소 · 팔레트 양자화 · 외곽선 재부착
 tools/check.html     결과를 눈으로 판정하는 페이지. 브라우저로 그냥 연다
 tools/out-*.png      결과물 (gitignore. 아래 명령으로 언제든 다시 만든다)
 ```
+
+**여러 개짜리 에셋은 한 장에 그려 잘라 쓴다.** 배경 제거가 생성보다 6배 비싸고,
+시트 쪽이 축소 비율이 작아 선도 더 잘 남는다(명세 §12.8). 배경이 평평하면
+`--drop-background` 로 공짜로 지운다 — 실패하면 스크립트가 죽으므로 그때 유료
+누끼를 쓴다(§12.9).
+
+```bash
+node apps/pet/tools/slice.mjs --in apps/pet/tools/raw/items-sheet.png   --drop-background --outdir apps/pet/tools/sliced/items   --names apple,bread,cake,orange,milk,cookie,strawberry,cheese,donut,watermelon,candy
+```
+
+`--dry-run` 을 붙이면 파일을 쓰지 않고 무엇을 찾았는지만 보여준다. 이름 개수와
+찾은 덩어리 수가 다르면 목록을 출력하고 죽는다 — 조용히 어긋난 채 저장하지 않는다.
 
 ```bash
 node apps/pet/tools/pixelize.mjs --in apps/pet/tools/raw/room.png   --out apps/pet/tools/out-room.png --size 360x640 --despeckle
