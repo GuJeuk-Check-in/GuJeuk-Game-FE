@@ -6,16 +6,44 @@
 
 import itemAppleUrl from '../assets/item-apple.png'
 import petUrl from '../assets/pet.png'
+import roomBathUrl from '../assets/room-bath.png'
+import roomBedUrl from '../assets/room-bed.png'
+import roomKitchenUrl from '../assets/room-kitchen.png'
 import roomLivingUrl from '../assets/room-living.png'
+import roomPlayUrl from '../assets/room-play.png'
+import roomShopUrl from '../assets/room-shop.png'
+import { ROOMS } from './rooms'
+
+/**
+ * 방 배경 에셋 이름 → 파일 주소.
+ *
+ * 키는 rooms.ts 의 `RoomDef.asset` 과 같은 문자열이다.
+ *
+ * **이 표를 ROOMS 에서 자동으로 만들 수는 없다.** Vite 는 import 경로가 정적
+ * 리터럴일 때만 파일을 번들에 넣고 해시를 붙인다. `../assets/${name}.png` 처럼
+ * 변수를 끼우면 개발 서버에서는 동작하다가 배포에서만 404 가 난다(이 파일
+ * 첫머리의 이유와 같은 함정이다). 그래서 표는 손으로 적고, 대신 ROOMS 와
+ * 어긋나지 않는지를 로딩 직전에 검사한다.
+ */
+const ROOM_ASSET_URLS: Record<string, string> = {
+  'room-living': roomLivingUrl,
+  'room-kitchen': roomKitchenUrl,
+  'room-bath': roomBathUrl,
+  'room-bed': roomBedUrl,
+  'room-play': roomPlayUrl,
+  'room-shop': roomShopUrl,
+}
 
 /**
  * 한 벌로 다 불러온 스프라이트.
  *
  * 하나씩 도착하는 대로 그리지 않는다. 방만 있고 펫이 없는 중간 상태가 화면에
- * 남으면 "펫이 사라졌다"로 보인다.
+ * 남으면 "펫이 사라졌다"로 보인다. 방 여섯 장도 같이 기다린다 — 옆 방으로
+ * 넘어가는 순간에 그 방만 아직 없어서 검게 비면 전환이 고장 난 것처럼 보인다.
  */
 export interface SpriteSet {
-  readonly roomLiving: HTMLImageElement
+  /** rooms.ts 의 `RoomDef.asset` 이름으로 찾는다. ROOMS 의 모든 방이 반드시 들어 있다. */
+  readonly rooms: Record<string, HTMLImageElement>
   readonly pet: HTMLImageElement
   readonly itemApple: HTMLImageElement
 }
@@ -52,14 +80,41 @@ function loadImage(name: string, url: string): Promise<HTMLImageElement> {
   })
 }
 
+/**
+ * ROOMS 가 요구하는 배경 이름들. 중복은 한 번만 남긴다.
+ *
+ * 표에 없는 이름이 있으면 조용히 건너뛰지 않고 죽는다. 건너뛰면 그 방으로
+ * 넘어갔을 때만 화면이 비고, 그 시점에는 원인이 "에셋 표를 안 고쳤다"라는
+ * 것이 전혀 드러나지 않는다. 방을 추가하는 사람이 여기서 바로 막히는 편이 싸다.
+ */
+function roomAssetNames(): string[] {
+  const names = [...new Set(ROOMS.map((room) => room.asset))]
+  const missing = names.filter((name) => !(name in ROOM_ASSET_URLS))
+
+  if (missing.length > 0) {
+    throw new Error(
+      `[sprites] ROOMS 가 쓰는 배경이 ROOM_ASSET_URLS 에 없습니다: ${missing.join(', ')}`,
+    )
+  }
+
+  return names
+}
+
 async function loadAll(): Promise<SpriteSet> {
-  const [roomLiving, pet, itemApple] = await Promise.all([
-    loadImage('room-living', roomLivingUrl),
+  const names = roomAssetNames()
+
+  const [pet, itemApple, ...roomImages] = await Promise.all([
     loadImage('pet', petUrl),
     loadImage('item-apple', itemAppleUrl),
+    ...names.map((name) => loadImage(name, ROOM_ASSET_URLS[name])),
   ])
 
-  return { roomLiving, pet, itemApple }
+  const rooms: Record<string, HTMLImageElement> = {}
+  names.forEach((name, index) => {
+    rooms[name] = roomImages[index]
+  })
+
+  return { rooms, pet, itemApple }
 }
 
 let pending: Promise<SpriteSet> | null = null

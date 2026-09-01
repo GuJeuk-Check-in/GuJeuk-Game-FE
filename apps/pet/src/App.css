@@ -44,7 +44,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 6px 12px;
   background: var(--pt-panel);
   border-radius: var(--gj-radius);
 }
@@ -89,7 +89,10 @@
   gap: 6px;
 }
 
-@media (min-width: 380px) {
+/* 375px(아이폰 기본 폭)가 두 칸에 들어오게 잡았다. 380px 로 두면 그 폭에서
+   게이지가 네 줄로 쌓여 HUD 가 화면의 3분의 1을 먹고, 그만큼 캔버스 배율이
+   내려간다 — 도트는 중간 배율이 없어 한 단계가 크게 보인다. */
+@media (min-width: 340px) {
   .pt-hud__stats {
     grid-template-columns: 1fr 1fr;
     column-gap: 12px;
@@ -301,6 +304,214 @@
   opacity: 0.7;
 }
 
+/* ---- 방 이동 ------------------------------------------------------------- */
+
+/* 캔버스를 감싸는 면. 스와이프를 여기서 받는다(RoomNav 주석). */
+.pt-roomnav {
+  position: relative;
+  height: 100%;
+}
+
+.pt-roomnav__name {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 4px 14px;
+  background: var(--pt-panel);
+  border-radius: var(--gj-radius-pill);
+  color: var(--pt-text);
+  font-size: 13px;
+  font-weight: 700;
+  /* 방 이름은 읽히기만 하면 된다. 여기에 손이 닿으면 스와이프가 끊긴다. */
+  pointer-events: none;
+}
+
+.pt-roomnav__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  /* 터치 최소 크기(--gj-tap). 화살표는 화면 가장자리라 특히 빗나가기 쉽다. */
+  width: var(--gj-tap);
+  height: var(--gj-tap);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--gj-radius-pill);
+  /* 방 배경을 가리지 않게 반투명으로 깐다. 완전히 투명하면 어디를 눌러야 할지
+     알 수 없고, 불투명하면 도트 배경 위에 UI 덩어리가 얹힌다. */
+  background: color-mix(in srgb, var(--pt-ink) 55%, transparent);
+  color: var(--pt-text);
+  font-size: 16px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.pt-roomnav__arrow--prev {
+  left: 6px;
+}
+
+.pt-roomnav__arrow--next {
+  right: 6px;
+}
+
+/* ---- 액션 바 ------------------------------------------------------------- */
+
+.pt-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pt-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.pt-actions__btn {
+  flex: 1 1 0;
+  /* 두 줄("곧 열려요")이 들어가도 버튼 높이가 --gj-tap 아래로 내려가지 않는다. */
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+}
+
+.pt-actions__label {
+  font-weight: 700;
+}
+
+/* 아직 없는 기능임을 버튼 안에서 밝힌다. 눌러 보고 알게 하지 않는다. */
+.pt-actions__soon {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+/* ---- 인벤토리 시트 -------------------------------------------------------- */
+
+.pt-sheet {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  /* 아래에서 올라오는 시트. 액션 바에 가까운 쪽이 엄지에 닿는다. */
+  align-items: flex-end;
+  padding: 12px;
+  background: color-mix(in srgb, var(--pt-ink) 72%, transparent);
+  z-index: 12;
+}
+
+.pt-sheet__panel {
+  width: 100%;
+  padding: 16px;
+  background: var(--pt-panel);
+  border: 2px solid var(--pt-ink);
+  border-radius: var(--gj-radius-lg);
+}
+
+.pt-sheet__title {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.pt-sheet__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.pt-sheet__item {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.pt-sheet__food {
+  font-weight: 700;
+}
+
+.pt-sheet__effect {
+  color: var(--pt-dim);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pt-sheet__count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.pt-sheet__empty {
+  margin: 0;
+  color: var(--pt-dim);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.pt-sheet__close {
+  margin-top: 12px;
+  width: 100%;
+}
+
+/* ---- 알림 한 줄 ----------------------------------------------------------- */
+
+/* 화면을 막지 않는다. 알림을 읽는 동안에도 다음 행동을 누를 수 있어야 한다. */
+.pt-toast {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  padding: 10px 14px;
+  background: var(--pt-panel);
+  border: 2px solid var(--pt-ink);
+  border-radius: var(--gj-radius);
+  text-align: center;
+  pointer-events: none;
+  z-index: 11;
+}
+
+.pt-toast__message {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* 토스트는 나타나는 것 자체가 신호다. 그냥 켜지면 언제 바뀌었는지 놓친다. */
+@keyframes pt-toast-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.pt-toast {
+  animation: pt-toast-in var(--gj-dur) var(--gj-ease);
+}
+
+/* 애니메이션을 끈 사용자에게는 움직임 없이 그대로 보여준다. */
+@media (prefers-reduced-motion: reduce) {
+  .pt-toast {
+    animation: none;
+  }
+}
+
+.pt-toast__detail {
+  margin: 4px 0 0;
+  color: var(--pt-coin);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 /* ---- 개발용 시간 점프 ----------------------------------------------------- */
 
 .pt-devbar {
@@ -320,4 +531,54 @@
   flex: 1 1 4rem;
   padding: 8px 10px;
   font-size: 13px;
+}
+
+/* ---- 눌림 반응 ------------------------------------------------------------ */
+
+/* 누른 순간 아무 일도 안 일어나면 고장 난 것처럼 느껴진다. 도트 게임이므로
+   1px 만 내려앉힌다 — 소수 픽셀 변형은 글자와 테두리를 흐리게 만든다. */
+.gj-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gj-btn:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* ---- 개발 도구 (접이식) ---------------------------------------------------- */
+
+/* 흐름에서 뺀다. 이 24px 이 남아 있으면 스테이지 높이가 640 아래로 내려가
+   캔버스 정수 배율이 2 에서 1 로 떨어지고, 게임이 절반 크기로 그려진다.
+   프로덕션 번들에는 이 블록 자체가 없으므로 개발 화면을 프로덕션과 같은
+   배율로 보기 위한 조치이기도 하다. */
+.pt-dev {
+  position: absolute;
+  left: 8px;
+  /* 액션 바 바로 위. 화면 위쪽에 두면 HUD 의 펫 이름을 가리고, 액션 바에
+     겹치면 글자가 배경에 묻힌다. 스테이지 아래쪽은 바닥이라 비어 있다. */
+  bottom: 52px;
+  z-index: 20;
+  background: var(--pt-panel);
+  border: 2px solid var(--pt-ink);
+  border-radius: var(--gj-radius);
+  padding: 2px 8px;
+}
+
+.pt-dev[open] {
+  right: 8px;
+  padding: 6px 8px;
+}
+
+.pt-dev__toggle {
+  color: var(--pt-dim);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+
+.pt-dev[open] .pt-devbar {
+  margin-top: 6px;
 }

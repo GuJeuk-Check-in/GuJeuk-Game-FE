@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ElapsedReport, PetSave } from './game/types'
+import type { ElapsedReport, FoodId, ItemId, PetSave } from './game/types'
 import { applyElapsed } from './game/pet/stats'
 import type { LoadResult } from './game/pet/save'
 import { createSave, loadSave, writeSave } from './game/pet/save'
+import type { ActionOutcome } from './game/pet/actions'
+import { feed, grantItem, pat, startSleep, wakeUp, wash } from './game/pet/actions'
 
 /**
  * 세이브를 들고 있는 유일한 곳.
@@ -15,6 +17,43 @@ import { createSave, loadSave, writeSave } from './game/pet/save'
 /** 주기 저장 간격. 명세 §10 의 "30초마다". */
 const AUTOSAVE_INTERVAL_MS = 30_000
 
+/**
+ * 화면이 요청할 수 있는 돌봄 행동.
+ *
+ * 'sleep' 과 'wake' 를 나눈 것은 액션 함수가 둘로 나뉘어 있어서다(actions.ts).
+ * 지금 자고 있는지 보고 어느 쪽을 부를지는 화면이 정한다 — 버튼 글자도 그
+ * 판단으로 바뀌므로, 한 곳에서 정해야 글자와 동작이 어긋나지 않는다.
+ */
+export type ActionKind = 'feed' | 'wash' | 'pat' | 'sleep' | 'wake'
+
+/**
+ * 종류에 맞는 액션 함수를 고른다.
+ *
+ * 훅 바깥에 두는 이유는 이 함수가 React 상태를 하나도 보지 않기 때문이다.
+ * 안에 두면 매 렌더마다 다시 만들어지고, useCallback 의존성에도 끌려 들어온다.
+ */
+function runAction(
+  save: PetSave,
+  kind: ActionKind,
+  food: FoodId | undefined,
+  now: number,
+): ActionOutcome | null {
+  switch (kind) {
+    case 'feed':
+      // 무엇을 먹일지는 화면이 인벤토리에서 고른다. 고르지 않고 온 것은 규칙
+      // 위반이 아니라 화면의 실수이므로, 세이브를 건드리지 않고 돌려보낸다.
+      return food === undefined ? null : feed(save, food, now)
+    case 'wash':
+      return wash(save, now)
+    case 'pat':
+      return pat(save, now)
+    case 'sleep':
+      return startSleep(save, now)
+    case 'wake':
+      return wakeUp(save, now)
+  }
+}
+
 export interface UsePetResult {
   save: PetSave | null
   report: ElapsedReport | null
@@ -22,8 +61,17 @@ export interface UsePetResult {
   /** 저장이 실패하고 있으면 사용자에게 보일 문구. 성공 중이면 null. */
   persistError: string | null
   start: (name: string) => void
+  /**
+   * 돌봄 행동을 한 번 한다. 세이브가 아직 없으면(이름 입력 전) null.
+   *
+   * 결과의 message 는 성공이든 거절이든 화면에 그대로 띄우면 된다. 거절 사유를
+   * 화면이 다시 판단하지 않는다 — 규칙은 actions.ts 한 곳에만 있다.
+   */
+  act: (kind: ActionKind, food?: FoodId) => ActionOutcome | null
   /** 개발 전용 시간 점프. M1 완료 기준을 손으로 확인하는 수단이다. */
   jump: (ms: number) => void
+  /** 개발 전용 물건 지급. 상점·튜토리얼(M4)이 없어 음식을 얻을 길이 없다. */
+  grant: (item: ItemId, count: number) => void
   dismissReport: () => void
 }
 
@@ -203,6 +251,35 @@ export function usePet(): UsePetResult {
     [commit],
   )
 
+  /**
+   * 돌봄 행동.
+   *
+   * **액션 함수를 부르기 전에 반드시 applyElapsed 를 지난다.** 액션은 시간을
+   * 다루지 않는다는 것이 actions.ts 와의 계약이라, 여기서 최신 상태로 만들어
+   * 넘기지 않으면 마지막 접속 이후의 감소가 통째로 빠진 값 위에 효과가 얹힌다.
+   * 반대로 액션 안에서 다시 계산하면 이중 적용이 된다.
+   *
+   * 여기서 나온 리포트는 버린다. 복귀 카드는 화면에 들어오는 순간에만 뜬다 —
+   * 밥을 줄 때마다 "12시간 만이야!" 카드가 뜨면 안 된다.
+   */
+  const act = useCallback(
+    (kind: ActionKind, food?: FoodId): ActionOutcome | null => {
+      const current = saveRef.current
+      if (!current) return null
+
+      const now = Date.now()
+      const fresh = applyElapsed(current, now)
+      const outcome = runAction(fresh.next, kind, food, now)
+      if (!outcome) return null
+
+      // 거절(changed:false)이어도 커밋한다. outcome.next 는 경과가 반영된
+      // 세이브이므로, 버리면 방금 지나간 시간이 없던 일이 된다.
+      commit(outcome.next, null)
+      return outcome
+    },
+    [commit],
+  )
+
   const jump = useCallback(
     (ms: number) => {
       const current = saveRef.current
@@ -230,7 +307,23 @@ export function usePet(): UsePetResult {
     [commit],
   )
 
+  /**
+   * 개발용 지급.
+   *
+   * 규칙이 아니므로 ActionOutcome 을 쓰지 않고 결과 문구도 없다. 여기서
+   * applyElapsed 를 돌리지 않는 것도 같은 이유다 — 이건 게임 안의 행동이 아니라
+   * 상태를 손으로 밀어 넣는 도구이고, 시간과 얽히면 도구가 게임을 바꾼다.
+   */
+  const grant = useCallback(
+    (item: ItemId, count: number) => {
+      const current = saveRef.current
+      if (!current) return
+      commit(grantItem(current, item, count), null)
+    },
+    [commit],
+  )
+
   const dismissReport = useCallback(() => setReport(null), [])
 
-  return { save, report, recovered, persistError, start, jump, dismissReport }
+  return { save, report, recovered, persistError, start, act, jump, grant, dismissReport }
 }
