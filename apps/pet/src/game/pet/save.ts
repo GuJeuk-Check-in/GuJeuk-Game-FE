@@ -24,7 +24,28 @@ import { localDateKey } from './clock'
 // 두 벌이 된다(tutorial.ts 는 save.ts 를 참조하지 않으므로 순환이 없다).
 import { TUTORIAL_START_STEP } from './tutorial'
 
-export const SAVE_KEY = 'gj.pet.v1'
+/**
+ * 세이브 키의 접두사. **뒤에 회원 id 를 붙여 쓴다**(saveKey).
+ *
+ * 이 값 자체는 키가 아니다. 예전에는 그랬는데, 기관에서 한 기기를 여러 사람이
+ * 번갈아 쓴다는 것을 뒤늦게 알았다(PET_SERVER_API.md §2).
+ */
+const SAVE_KEY_PREFIX = 'gj.pet.v1'
+
+/**
+ * 이 회원의 세이브가 사는 자리.
+ *
+ * **칸이 하나면 다음 사람이 앞사람의 펫을 덮어쓴다.** 키를 나누면 로그아웃이
+ * 늦거나 브라우저가 갑자기 죽어도 서로의 진행이 섞이지 않는다.
+ *
+ * 로그인 이전에 쓰던 익명 키(접두사 그 자체)는 **읽지 않는다.** 그 값이 누구
+ * 것인지 알 수 없어서다 — 읽으면 공용 기기에서 아무나 그 펫을 이어받는다.
+ * 지우지도 않는다. 주인을 모르는 데이터를 지우는 것이 이 게임에서 유일하게
+ * 되돌릴 수 없는 일이고, 읽지 않는 이상 남아 있어도 아무 일도 일어나지 않는다.
+ */
+export function saveKey(memberId: number): string {
+  return `${SAVE_KEY_PREFIX}.${memberId}`
+}
 
 /**
  * 읽을 수 없는 세이브를 옮겨 두는 키의 접두사.
@@ -110,15 +131,15 @@ export function createSave(name: string, now: number): PetSave {
   }
 }
 
-export function loadSave(storage: Storage, now: number): LoadResult {
-  const raw = storage.getItem(SAVE_KEY)
+export function loadSave(storage: Storage, key: string, now: number): LoadResult {
+  const raw = storage.getItem(key)
   if (raw === null) return { kind: 'empty' }
 
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
-    return recover(storage, raw, now, '저장 파일이 올바른 JSON 이 아니다')
+    return recover(storage, key, raw, now, '저장 파일이 올바른 JSON 이 아니다')
   }
 
   const stamp = stampOf(parsed, now)
@@ -128,21 +149,54 @@ export function loadSave(storage: Storage, now: number): LoadResult {
   const version = isObject(parsed) ? parsed.version : undefined
   if (isFiniteNumber(version) && version > CURRENT_VERSION) {
     const reason = `더 최신 버전(v${version})의 저장 파일이라 읽지 않았다`
-    return recover(storage, raw, stamp, reason)
+    return recover(storage, key, raw, stamp, reason)
   }
 
   try {
     return { kind: 'ok', save: parseSave(parsed) }
   } catch (error) {
-    if (error instanceof SaveShapeError) return recover(storage, raw, stamp, error.message)
+    if (error instanceof SaveShapeError) return recover(storage, key, raw, stamp, error.message)
     throw error
   }
 }
 
-export function writeSave(storage: Storage, save: PetSave): void {
+export function writeSave(storage: Storage, key: string, save: PetSave): void {
   // 저장 실패(용량 초과 · 사파리 프라이빗 모드 등)를 삼키지 않는다. 조용히
   // 실패하면 사용자는 진행이 저장되고 있다고 믿은 채 계속 논다.
-  storage.setItem(SAVE_KEY, JSON.stringify(save))
+  storage.setItem(key, JSON.stringify(save))
+}
+
+/**
+ * 이 회원의 세이브를 로컬에서 지운다. 로그아웃의 마지막 단계다.
+ *
+ * **서버에 올린 뒤에만 부른다.** 순서가 반대면 진행이 사라진다
+ * (PET_SERVER_API.md §10). 반대로 지우지 않고 두면 다음 사람이 그 펫을 본다.
+ */
+export function clearSave(storage: Storage, key: string): void {
+  storage.removeItem(key)
+}
+
+/**
+ * 서버에서 받은 값을 세이브로 읽는다. 읽을 수 없으면 null.
+ *
+ * **서버에서 온 값도 손상된 로컬 세이브와 똑같이 다룬다.** 서버는 세이브를
+ * 해석하지 않고 보관만 하므로(PET_SERVER_API.md §6) 모양을 보증해 주지 않는다.
+ * 그대로 화면에 넣으면 남의 기기에서 올라온 이상한 값이 그 자리에서 렌더링을
+ * 죽인다.
+ *
+ * 백업을 만들지 않는 것은 원본이 서버에 그대로 있기 때문이다 — 로컬 복구와
+ * 달리 여기서는 잃을 것이 없다.
+ */
+export function readServerSave(value: unknown): PetSave | null {
+  const version = isObject(value) ? value.version : undefined
+  if (isFiniteNumber(version) && version > CURRENT_VERSION) return null
+
+  try {
+    return parseSave(value)
+  } catch (error) {
+    if (error instanceof SaveShapeError) return null
+    throw error
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -156,10 +210,16 @@ export function writeSave(storage: Storage, save: PetSave): void {
  * 사라진다. 원본을 지우는 이유는, 남겨 두면 실행할 때마다 같은 값을 다시
  * 백업하며 저장소를 채우기 때문이다. 값 자체는 백업 키에 그대로 남는다.
  */
-function recover(storage: Storage, raw: string, stamp: number, reason: string): LoadResult {
+function recover(
+  storage: Storage,
+  key: string,
+  raw: string,
+  stamp: number,
+  reason: string,
+): LoadResult {
   const backupKey = freeBackupKey(storage, stamp)
   storage.setItem(backupKey, raw)
-  storage.removeItem(SAVE_KEY)
+  storage.removeItem(key)
   return { kind: 'recovered', reason, backupKey }
 }
 

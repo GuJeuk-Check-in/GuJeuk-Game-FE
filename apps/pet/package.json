@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@gujuck/api": "workspace:*",
     "@gujuck/game-core": "workspace:*",
     "@gujuck/ui": "workspace:*",
     "react": "^18.3.1",

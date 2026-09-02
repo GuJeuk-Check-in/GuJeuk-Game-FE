@@ -1491,6 +1491,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@gujuck/pet@workspace:apps/pet"
   dependencies:
+    "@gujuck/api": "workspace:*"
     "@gujuck/eslint-config": "workspace:*"
     "@gujuck/game-core": "workspace:*"
     "@gujuck/tsconfig": "workspace:*"

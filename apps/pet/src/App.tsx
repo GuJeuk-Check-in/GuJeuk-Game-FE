@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import type { AuthResult } from '@gujuck/api'
 import { GameCanvas, GameShell } from '@gujuck/ui'
 import type { CanvasStage } from '@gujuck/game-core'
 import { DECOR_ROOM, PetGame } from './game/PetGame'
@@ -44,8 +45,13 @@ import { ShopScreen } from './components/ShopScreen'
 import { DecorateBar } from './components/DecorateBar'
 import { TutorialOverlay } from './components/TutorialOverlay'
 import { Toast } from './components/Toast'
+import { AuthScreen } from './components/AuthScreen'
+import { ConflictCard } from './components/ConflictCard'
+import { LogoutSheet } from './components/LogoutSheet'
 import { usePet } from './usePet'
 import type { ActionKind } from './usePet'
+import { beginSession, currentSession, onSessionEnd } from './session'
+import type { Session } from './session'
 import './App.css'
 
 /**
@@ -198,7 +204,58 @@ function toDecorEdit(decor: DecorUi | null): DecorEdit | null {
   }
 }
 
+/**
+ * 로그인 껍데기.
+ *
+ * **펫타운은 로그인이 입장 조건이다**(PET_SERVER_API.md §2). 다른 게임처럼
+ * "로그인 없이 해보기"를 두지 않는 것은, 기관에서 한 기기를 여러 사람이 번갈아
+ * 쓰기 때문이다 — 익명으로 시작하면 그 진행이 누구 것인지 알 수 없다.
+ */
 export default function App() {
+  const [session, setSession] = useState<Session | null>(currentSession)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  /**
+   * 세션은 화면이 부르지 않은 순간에도 끝난다 — 자동 저장이 올리다 만난 401 이
+   * 그렇다. 여기서 듣지 않으면 로그인이 끊긴 채로 화면만 계속 돌고, 그동안의
+   * 진행은 어디에도 올라가지 않는다.
+   */
+  useEffect(
+    () =>
+      onSessionEnd((reason) => {
+        setSession(null)
+        setNotice(
+          reason === 'expired'
+            ? '로그인이 만료되어 나왔어요. 다시 로그인하면 이어서 놀 수 있어요.'
+            : null,
+        )
+      }),
+    [],
+  )
+
+  const enter = useCallback((result: AuthResult) => {
+    setNotice(null)
+    setSession(beginSession(result))
+  }, [])
+
+  if (!session) {
+    return (
+      <div className="pt-root" style={PALETTE_STYLE}>
+        <GameShell>
+          <div className="pt-center">
+            <AuthScreen onAuthenticated={enter} notice={notice} />
+          </div>
+        </GameShell>
+      </div>
+    )
+  }
+
+  // **key 로 사람이 바뀌면 상태를 통째로 새로 만든다.** 앞사람의 방·가방·열려
+  // 있던 카드가 남아 있으면 공용 기기에서는 그것만으로 사고다.
+  return <PetTown key={session.memberId} session={session} />
+}
+
+function PetTown({ session }: { session: Session }) {
   const {
     save,
     report,
@@ -218,7 +275,14 @@ export default function App() {
     jump,
     grant,
     dismissReport,
-  } = usePet()
+    // 화면에는 이미 phase(놀이터 흐름)가 있다. 뜻이 전혀 다르므로 이름을 나눈다.
+    phase: loadPhase,
+    conflict,
+    syncError,
+    resolveConflict,
+    logout,
+    retryLoad,
+  } = usePet(session)
   const gameRef = useRef<PetGame | null>(null)
 
   // 현재 방은 **세이브에 넣지 않는다.** 명세 §10 의 스키마에 없는 필드이고,
@@ -244,6 +308,9 @@ export default function App() {
    * 버튼은 켜졌다고 하는데 소리가 안 나는 상태가 만들어진다.
    */
   const [muted, setMuted] = useState(() => sound.isMuted())
+
+  /** 나가기 확인 시트가 떠 있는가. 공용 기기라 잘못 눌러 나가는 것도 사고다. */
+  const [leaving, setLeaving] = useState(false)
 
   /** 끌기를 시작한 손끝과 가구 왼쪽 위의 차. 이걸 안 재면 잡는 순간 가구가 튄다. */
   const grabRef = useRef({ dx: FURNITURE_HALF, dy: FURNITURE_HALF })
@@ -446,6 +513,58 @@ export default function App() {
     setMuted(next)
     if (!next) sound.play('tap')
   }, [])
+
+  /**
+   * 아직 서버에 물어보는 중이다.
+   *
+   * **여기서 이름 입력을 띄우면 안 된다.** 세이브가 null 이라는 것만으로는 펫이
+   * 없는 것인지 아직 모르는 것인지 구분되지 않아서, 이미 펫이 있는 사람이 새
+   * 펫을 만들게 된다(usePet 의 LoadPhase).
+   */
+  if (loadPhase === 'loading') {
+    return (
+      <div className="pt-root" style={PALETTE_STYLE}>
+        <GameShell>
+          <div className="pt-center">
+            <p className="pt-gate" role="status">
+              펫을 데려오는 중…
+            </p>
+          </div>
+        </GameShell>
+      </div>
+    )
+  }
+
+  /**
+   * 서버를 못 만났고 이 기기에도 진행이 없다.
+   *
+   * 새 펫을 주고 싶어지지만 그러면 안 된다 — 서버에 이미 펫이 있는데 못 물어본
+   * 것일 수 있고, 그때는 이름을 짓고 한참 논 다음에야 충돌로 알게 된다.
+   *
+   * 나가기를 함께 두는 것은 공용 기기이기 때문이다. 서버가 오래 죽어 있으면 이
+   * 사람은 못 놀지만, 다음 사람은 로그인부터 다시 해 볼 수 있어야 한다.
+   */
+  if (loadPhase === 'retry') {
+    return (
+      <div className="pt-root" style={PALETTE_STYLE}>
+        <GameShell>
+          <div className="pt-center">
+            <div className="pt-gate__card">
+              <p className="pt-gate__lead" role="alert">
+                서버에 연결하지 못했어요. 진행이 서버에 있어서 연결되기 전에는 시작할 수 없습니다.
+              </p>
+              <button className="gj-btn gj-btn--primary" type="button" onClick={retryLoad}>
+                다시 시도
+              </button>
+              <button className="gj-btn gj-btn--ghost" type="button" onClick={() => void logout()}>
+                다른 사람으로 로그인
+              </button>
+            </div>
+          </div>
+        </GameShell>
+      </div>
+    )
+  }
 
   if (!save) {
     return (
@@ -702,6 +821,17 @@ export default function App() {
     }
   }
 
+  const playing = phase !== null && phase.kind === 'playing' ? phase : null
+
+  /**
+   * 위쪽 띠에 무엇을 띄울지. **로컬 저장 실패가 서버 동기화 실패보다 급하다.**
+   *
+   * 로컬이 막혔으면 지금 이 순간의 진행이 어디에도 없다. 서버만 막힌 것은 로컬에
+   * 남아 있고 다음 로그인에 이어진다(sync.ts). 둘을 함께 쌓지 않는 것은 띠가 두
+   * 줄이 되면 캔버스를 덮기 때문이다.
+   */
+  const banner = persistError ?? syncError
+
   const header = (
     <div className="pt-hud">
       <div className="pt-hud__row">
@@ -726,6 +856,26 @@ export default function App() {
           <span aria-hidden="true">{muted ? '🔇' : '🔊'}</span>
           <span className="pt-hud__mute-text">소리 {muted ? '끔' : '켬'}</span>
         </button>
+        {/* 나가기는 **언제나 보이는 자리**에 있어야 한다. 묻히면 사람들이 그냥
+            자리를 뜨고, 다음 사람이 앞사람 계정으로 계속 논다(§12 의 열린 질문 4).
+
+            버튼 글자가 닉네임인 것은 한 자리에서 두 가지를 하기 때문이다 —
+            지금 누구인지 보여주는 것과, 나가는 것. HUD 에 줄을 더하면 캔버스의
+            정수 배율이 2 에서 1 로 떨어질 수 있어 자리를 새로 낼 수 없다. */}
+        {/* 판이 도는 동안에는 내린다. 확인 시트가 캔버스를 덮으면 게임은 보이지도
+            눌리지도 않는데 루프는 그대로 돌아 혼자 진행된다(아래 판들과 같은 이유).
+            한 판은 길어야 1분이라 그때까지 기다려도 된다. */}
+        {playing === null ? (
+          <button
+            type="button"
+            className="pt-hud__leave"
+            onClick={() => setLeaving(true)}
+            aria-label={`${session.nickname} 님으로 로그인 중 — 나가기`}
+          >
+            <span aria-hidden="true">🚪</span>
+            <span className="pt-hud__leave-text">{session.nickname}</span>
+          </button>
+        ) : null}
       </div>
       {/* 튜토리얼이 게이지를 가리킬 때 잡는 대상이다. StatBar 를 고치지 않고
           감싸는 것은, 강조가 스탯 표시의 일이 아니라 튜토리얼의 일이기 때문이다
@@ -742,8 +892,6 @@ export default function App() {
       </div>
     </div>
   )
-
-  const playing = phase !== null && phase.kind === 'playing' ? phase : null
 
   /** 지금 튜토리얼 단계. 끝났으면 null 이고, 그러면 오버레이가 아예 없다. */
   const tutorialStep = currentStep(save)
@@ -880,10 +1028,15 @@ export default function App() {
             </RoomNav>
           )}
 
-          {/* 저장이 막혀 있으면 알린다. 조용히 두면 진행이 남는다고 믿은 채 계속 논다. */}
-          {persistError ? (
+          {/* 저장이 막혀 있으면 알린다. 조용히 두면 진행이 남는다고 믿은 채 계속 논다.
+
+              로컬 저장 실패가 서버 동기화 실패보다 급하다. 로컬이 막혔으면 지금
+              이 순간의 진행이 어디에도 없지만, 서버만 막힌 것은 로컬에 남아 있고
+              다음 로그인에 이어진다(sync.ts). 둘을 한 자리에 쌓지 않는 것은 띠가
+              두 줄이 되면 캔버스를 덮기 때문이다. */}
+          {banner ? (
             <p className="pt-banner" role="status">
-              {persistError}
+              {banner}
             </p>
           ) : null}
 
@@ -962,6 +1115,41 @@ export default function App() {
           {playing === null && welcomeBack && report ? (
             <WelcomeBackCard report={report} petName={save.pet.name} onClose={dismissReport} />
           ) : null}
+
+          {/* 충돌은 **닫을 수 없는 카드**다. 고르는 것 말고 할 일이 없다(§5).
+              판이 도는 동안에는 띄우지 않는다 — 그 사이 올리기는 이미 멈춰
+              있으므로(usePet 의 conflictRef) 판이 끝난 뒤에 물어도 늦지 않다. */}
+          {playing === null && conflict ? (
+            <ConflictCard
+              when={conflict.when}
+              local={{
+                level: save.pet.level,
+                coins: save.wallet.coins,
+                at: save.lastSeenAt,
+              }}
+              server={conflict.server}
+              petName={save.pet.name}
+              onChoose={resolveConflict}
+            />
+          ) : null}
+
+          {/* 충돌이 떠 있는 동안에는 나가기 시트를 내린다. 둘 다 화면을 덮는
+              판이라 겹치면 "먼저 골라 주세요"라고 말해 놓고 고를 카드를 자기가
+              가린다. 고르고 나면 leaving 이 그대로라 시트가 다시 떠서, 나가려던
+              사람은 한 번만 더 누르면 된다. */}
+          {playing === null && leaving && conflict === null ? (
+            <LogoutSheet
+              nickname={session.nickname}
+              petName={save.pet.name}
+              onConfirm={async () => {
+                const result = await logout()
+                // 성공하면 세션이 끝나 이 화면이 통째로 사라진다. 실패면 문구를
+                // 시트가 직접 보여준다 — 무엇이 남았는지 알아야 한다(§10).
+                return result.message
+              }}
+              onCancel={() => setLeaving(false)}
+            />
+          ) : null}
         </div>
       </GameShell>
 
@@ -977,6 +1165,8 @@ export default function App() {
       !sheetOpen &&
       !shopOpen &&
       !welcomeBack &&
+      conflict === null &&
+      !leaving &&
       decor === null ? (
         <TutorialOverlay
           step={tutorialStep}
