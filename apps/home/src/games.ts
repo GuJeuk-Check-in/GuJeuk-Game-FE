@@ -42,12 +42,23 @@ const RAW: readonly Omit<GameLink, 'url' | 'ready'>[] = [
     icon: 'arrow',
     accent: '#f5cf3d',
   },
+  {
+    id: 'pet',
+    name: '펫타운',
+    description: '먹이고 씻기고 재우며 함께 키워요',
+    // 다른 넷과 달리 혼자 하는 게임이다. 아이콘도 대결이 아닌 것으로 고른다.
+    icon: 'star',
+    // 펫타운 팔레트(Vanilla Milkshake)의 민트. 다른 카드가 파랑·노랑·주황이라
+    // 목록에서 바로 구분된다.
+    accent: '#b3e3da',
+  },
 ]
 
 const URLS: Record<string, string | undefined> = {
   'tic-tac-toe': import.meta.env.VITE_URL_TIC_TAC_TOE,
   alkkagi: import.meta.env.VITE_URL_ALKKAGI,
   archery: import.meta.env.VITE_URL_ARCHERY,
+  pet: import.meta.env.VITE_URL_PET,
 }
 
 export const GAMES: readonly GameLink[] = RAW.map((game) => {

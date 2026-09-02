@@ -1,0 +1,6 @@
+{
+  "buildCommand": "corepack yarn turbo build --filter=@gujuck/pet",
+  "outputDirectory": "apps/pet/dist",
+  "installCommand": "corepack yarn install --immutable",
+  "framework": null
+}

@@ -12,6 +12,9 @@ export { tokenStore } from './token'
 export { createAuthApi } from './auth'
 export type { AuthApi, AuthResult, Credentials, GameName, Profile, RankingEntry } from './auth'
 
+export { createPetApi, PetConflictError } from './pet'
+export type { PetApi, PetSnapshot, PetSyncResult } from './pet'
+
 export { createGameSocket } from './socket'
 export type {
   GameSocket,

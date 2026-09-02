@@ -139,6 +139,28 @@ export function createConfig(options) {
       },
     },
 
+    // 에셋·빌드 도구는 브라우저가 아니라 Node 에서 돈다.
+    //
+    // 앱 소스에는 globals.browser 를 주는데, 같은 앱 안의 tools/*.mjs 는 CLI 라
+    // process·console·Buffer 가 전부 미정의로 잡힌다. 여기서 한 번 선언해 두면
+    // 앱마다 자기 eslint.config.mjs 에 같은 예외를 복붙하지 않아도 된다 —
+    // 설정이 갈라지는 것이 이 패키지가 막으려는 문제다.
+    //
+    // no-console 을 끄는 이유: 이 스크립트들에게는 stdout 이 결과를 내보내는
+    // 유일한 통로다. 앱 코드에서는 그대로 경고로 남는다.
+    {
+      files: ['tools/**/*.mjs', 'scripts/**/*.mjs'],
+      languageOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'module',
+        globals: globals.node,
+      },
+      rules: {
+        'no-console': 'off',
+        eqeqeq: ['error', 'always'],
+      },
+    },
+
     ...(useReact
       ? [
           {

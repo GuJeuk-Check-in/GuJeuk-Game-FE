@@ -23,6 +23,14 @@ export interface Profile {
  */
 export interface AuthResult {
   token: string
+  /**
+   * 이 계정의 서버 id. 토큰의 subject와 같은 값이다.
+   *
+   * 펫타운이 세이브를 브라우저에 캐시할 때 저장 키에 붙인다. 기관에서 한 기기를
+   * 여러 사람이 번갈아 쓰므로, 칸이 하나면 다음 사람이 앞사람의 펫을 덮어쓴다.
+   * 닉네임으로 대신하지 않는 이유는 서버의 AuthResponse 주석에 적었다.
+   */
+  memberId: number
   nickname: string
 }
 
