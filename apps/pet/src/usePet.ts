@@ -26,7 +26,7 @@ import { moveTo, pickUp, place } from './game/pet/decor'
 import type { TutorialEvent } from './game/pet/tutorial'
 import { advance, keepTutorialEnergy, skip, startTutorial } from './game/pet/tutorial'
 import { petApi } from './api'
-import { endSession } from './session'
+import { endSession, sessionHolds, supersedeSession } from './session'
 import type { Session } from './session'
 
 /**
@@ -404,6 +404,22 @@ export function usePet(session: Session): UsePetResult {
    */
   const push = useCallback(
     async (next: PetSave): Promise<PushResult> => {
+      /**
+       * **먼저 이 탭의 신원이 아직 유효한지 본다.**
+       *
+       * 토큰은 칸 하나를 공유하고 요청할 때마다 새로 읽힌다. 다른 탭에서 다른
+       * 사람이 로그인하면 이 탭의 올리기가 **그 사람 앞으로 나가고**, 서버는
+       * 주인을 토큰으로만 정하므로 앞사람의 세이브가 뒷사람의 행에 쓰인다.
+       * 보내고 나서는 되돌릴 수 없으니 보내기 전에 막는다.
+       *
+       * 밀려난 것을 알았으면 이 탭은 조용히 물러난다. 로컬 세이브는 회원별 키에
+       * 그대로 있어서 그 사람이 다시 로그인하면 이어진다.
+       */
+      if (!sessionHolds()) {
+        supersedeSession()
+        return 'failed'
+      }
+
       // 이미 물어봐 둔 것이 있으면 올리지 않는다. 지금 올리면 사람이 고르기도
       // 전에 한쪽이 이겨 버린다.
       if (conflictRef.current !== null) return 'conflict'

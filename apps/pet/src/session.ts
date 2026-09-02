@@ -44,10 +44,11 @@ interface Stored extends Session {
  * 세션이 끝난 이유. **화면이 "나갔다"와 "쫓겨났다"를 구분해 알려야 한다.**
  *
  * 쫓겨난 사람은 자기가 뭘 눌러서 그렇게 된 것이 아니므로, 이유를 읽지 못하면
- * 게임이 고장 났다고 생각한다. 'idle'(한동안 조작이 없어 자동으로 나감)과
- * 'expired'(토큰 만료)는 둘 다 그런 경우이고, 사람에게는 서로 다른 사건이다.
+ * 게임이 고장 났다고 생각한다. 'idle'(한동안 조작이 없어 자동으로 나감),
+ * 'expired'(토큰 만료), 'superseded'(다른 탭에서 다른 사람이 로그인함)는 전부
+ * 그런 경우이고, 사람에게는 서로 다른 사건이다.
  */
-export type SessionEndReason = 'logout' | 'idle' | 'expired'
+export type SessionEndReason = 'logout' | 'idle' | 'expired' | 'superseded'
 
 type Listener = (reason: SessionEndReason) => void
 
@@ -175,6 +176,31 @@ export function endSession(reason: 'logout' | 'idle' = 'logout'): void {
 }
 
 /**
+ * 이 탭의 신원이 아직 유효한가 — 기록의 토큰이 여전히 지금 토큰인가.
+ *
+ * **요청을 보내기 전에 물어야 한다.** 토큰은 한 칸을 공유하고 요청할 때마다
+ * 새로 읽히므로(packages/api 의 client.ts), 다른 탭에서 다른 사람이 로그인하면
+ * 이 탭의 요청이 **그 사람 앞으로 나간다.** 서버는 주인을 토큰으로만 정하니
+ * 앞사람의 세이브가 뒷사람의 행에 쓰인다.
+ */
+export function sessionHolds(): boolean {
+  const stored = read()
+  return stored !== null && stored.token === tokenStore.get()
+}
+
+/**
+ * 다른 사람이 이 기기에서 로그인해 이 탭의 신원이 밀려났다.
+ *
+ * **tokenStore 를 건드리지 않는다.** 그 토큰은 이제 그 사람 것이고, 지우면
+ * 옆 탭에서 놀고 있는 사람이 튕긴다. 우리가 버릴 것은 우리 기록뿐이다.
+ */
+export function supersedeSession(): void {
+  touchedAt = 0
+  storage()?.removeItem(SESSION_KEY)
+  for (const listener of [...listeners]) listener('superseded')
+}
+
+/**
  * 토큰이 만료됐다. api 클라이언트가 401 을 보면 부른다.
  *
  * endSession 과 같은 일을 하지만 이름을 나눈 것은, 화면이 "나갔다"와 "쫓겨났다"를
@@ -199,8 +225,13 @@ export function onSessionEnd(listener: Listener): () => void {
 function clear(reason: SessionEndReason): void {
   // 다음 세션이 이 값 때문에 첫 갱신을 건너뛰지 않게 되돌린다.
   touchedAt = 0
+
+  // 토큰이 이미 다른 사람 것이면 두고 간다. 토큰 칸은 하나뿐이라, 밀려난 탭이
+  // 나가면서 지우면 **지금 놀고 있는 사람이 튕긴다.**
+  const mine = sessionHolds()
+
   storage()?.removeItem(SESSION_KEY)
-  tokenStore.clear()
+  if (mine) tokenStore.clear()
   // 복사해서 도는 것은 듣는 쪽이 자기를 떼는 경우 때문이다. 도는 중에 Set 을
   // 건드리면 남은 하나를 건너뛴다.
   for (const listener of [...listeners]) listener(reason)

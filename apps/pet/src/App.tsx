@@ -52,7 +52,13 @@ import { IdleWarning } from './components/IdleWarning'
 import { useIdleLogout } from './useIdleLogout'
 import { usePet } from './usePet'
 import type { ActionKind } from './usePet'
-import { beginSession, currentSession, onSessionEnd } from './session'
+import {
+  beginSession,
+  currentSession,
+  onSessionEnd,
+  sessionHolds,
+  supersedeSession,
+} from './session'
 import type { Session, SessionEndReason } from './session'
 import './App.css'
 
@@ -222,6 +228,8 @@ const NOTICE_OF: Record<SessionEndReason, string | null> = {
   // 로그인에서 sync.ts 가 그것을 이어 준다.
   idle: '한동안 조작이 없어서 자동으로 나왔어요. 다시 로그인하면 이어서 놀 수 있어요.',
   expired: '로그인이 만료되어 나왔어요. 다시 로그인하면 이어서 놀 수 있어요.',
+  superseded:
+    '다른 사람이 이 기기에서 로그인했어요. 진행은 남아 있으니 다시 로그인하면 이어서 놀 수 있어요.',
 }
 
 /**
@@ -248,6 +256,23 @@ export default function App() {
       }),
     [],
   )
+
+  /**
+   * 다른 탭에서 다른 사람이 로그인하면 이 탭의 신원은 그 순간 남의 것이 된다.
+   *
+   * `storage` 이벤트는 **다른 탭이 바꿨을 때만** 오므로 이 용도에 정확히 맞는다.
+   * 듣지 않으면 이 탭은 자기가 밀려난 줄 모른 채 화면을 그리고 있고, 30초마다
+   * 도는 올리기가 남의 토큰으로 나간다(usePet 의 push 가 한 번 더 막지만,
+   * 여기서 먼저 알아채야 화면이 거짓말을 하지 않는다).
+   */
+  useEffect(() => {
+    const check = () => {
+      if (!sessionHolds()) supersedeSession()
+    }
+
+    window.addEventListener('storage', check)
+    return () => window.removeEventListener('storage', check)
+  }, [])
 
   const enter = useCallback((result: AuthResult) => {
     setNotice(null)
