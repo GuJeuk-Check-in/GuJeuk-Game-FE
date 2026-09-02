@@ -7,6 +7,7 @@
 - [컨벤션](docs/CONVENTIONS.md) — 코드 스타일, 커밋, 새 서비스 추가 절차
 - [게임 앱 표준 골격](apps/tic-tac-toe/README.md) — 새 게임을 만들기 전에 읽을 것
 - [펫타운 명세서](docs/PET_TOWN_SPEC.md) — 준비 중인 펫 육성 게임의 설계 (구현 전)
+- [펫타운 서버 API](docs/PET_SERVER_API.md) — 세이브 백업·기기 간 잇기에 필요한 API (구현 전)
 
 ## 구조
 

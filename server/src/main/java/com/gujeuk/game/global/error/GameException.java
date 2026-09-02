@@ -16,6 +16,10 @@ public class GameException extends RuntimeException {
         return new GameException(HttpStatus.BAD_REQUEST, message);
     }
 
+    public static GameException notFound(String message) {
+        return new GameException(HttpStatus.NOT_FOUND, message);
+    }
+
     public static GameException conflict(String message) {
         return new GameException(HttpStatus.CONFLICT, message);
     }

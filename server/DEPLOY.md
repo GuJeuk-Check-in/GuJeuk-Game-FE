@@ -55,6 +55,10 @@ GRANT ALL PRIVILEGES ON gujuck_game.* TO 'gameuser'@'%';
 | --- | --- |
 | `GAME_CORS_ORIGINS` | `https://alkkagi.oijwef098234.com,https://ttt.oijwef098234.com` |
 
+앱을 새로 배포하면 그 도메인을 `GAME_CORS_ORIGINS` 에 **먼저** 넣는다(펫타운도
+아직 들어 있지 않다). 빠지면 브라우저가 사전 요청 단계에서 막는데, 그 실패는
+서버 로그에 남지 않아 원인을 찾는 데 오래 걸린다.
+
 ### 3. Cloudflare 레코드
 
 | Type | Name | Content | Proxy |

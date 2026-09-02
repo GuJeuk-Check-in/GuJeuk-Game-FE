@@ -34,7 +34,8 @@ public class JwtFilter extends OncePerRequestFilter {
                 var authentication = new UsernamePasswordAuthenticationToken(memberId, null, List.of());
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (Exception exception) {
-                // 토큰이 깨졌으면 그냥 익명으로 둔다. 보호된 경로에서 401이 난다.
+                // 토큰이 깨졌으면 그냥 익명으로 둔다. 보호된 경로에서는 스프링
+                // 시큐리티의 기본 진입점이 막아 403이 나간다(본문 없음).
                 SecurityContextHolder.clearContext();
             }
         }
