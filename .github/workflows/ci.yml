@@ -79,6 +79,8 @@ jobs:
       matrix:
         # 게임을 추가할 때 손댈 곳은 여기 한 줄과 GitHub 시크릿뿐이다.
         # secret 값은 VERCEL_PROJECT_ID_<secret> 시크릿 이름으로 조합된다.
+        # 계정이 다른 게임은 VERCEL_TOKEN_<secret>, VERCEL_ORG_ID_<secret> 도
+        # 함께 넣는다(아래 Resolve 스텝 참고).
         app:
           - { slug: home, secret: HOME }
           - { slug: tic-tac-toe, secret: TIC_TAC_TOE }
@@ -109,25 +111,52 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
 
-      - name: Check Vercel secrets
+      - name: Resolve Vercel credentials
         id: check
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          # 게임이 서로 다른 Vercel 계정에 흩어져 있다. 토큰과 조직 id 는 계정
+          # 단위라서 하나로는 양쪽을 배포할 수 없다 — 한쪽 계정의 토큰으로 다른
+          # 계정 프로젝트를 부르면 그 게임은 영영 못 나간다.
+          #
+          # 그래서 게임별 시크릿이 있으면 그것을 먼저 쓰고, 없으면 공용값으로
+          # 떨어진다. 나중에 한 계정으로 모으면 게임별 시크릿만 지우면 된다.
+          TOKEN_OVERRIDE: ${{ secrets[format('VERCEL_TOKEN_{0}', matrix.app.secret)] }}
+          TOKEN_SHARED: ${{ secrets.VERCEL_TOKEN }}
+          ORG_OVERRIDE: ${{ secrets[format('VERCEL_ORG_ID_{0}', matrix.app.secret)] }}
+          ORG_SHARED: ${{ secrets.VERCEL_ORG_ID }}
           PROJECT_ID: ${{ secrets[format('VERCEL_PROJECT_ID_{0}', matrix.app.secret)] }}
         run: |
-          if [ -z "$VERCEL_TOKEN" ] || [ -z "$PROJECT_ID" ]; then
+          TOKEN="${TOKEN_OVERRIDE:-$TOKEN_SHARED}"
+          ORG="${ORG_OVERRIDE:-$ORG_SHARED}"
+
+          # 무엇이 빠졌는지 이름으로 남긴다. "시크릿이 없습니다" 만으로는
+          # 셋 중 어느 것인지 몰라 찾는 데 시간이 걸린다.
+          MISSING=""
+          [ -z "$TOKEN" ] && MISSING="$MISSING VERCEL_TOKEN(_${{ matrix.app.secret }})"
+          [ -z "$ORG" ] && MISSING="$MISSING VERCEL_ORG_ID(_${{ matrix.app.secret }})"
+          [ -z "$PROJECT_ID" ] && MISSING="$MISSING VERCEL_PROJECT_ID_${{ matrix.app.secret }}"
+
+          if [ -n "$MISSING" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::${{ matrix.app.slug }} 배포를 건너뜁니다. VERCEL_TOKEN 또는 VERCEL_PROJECT_ID_${{ matrix.app.secret }} 시크릿이 없습니다."
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::${{ matrix.app.slug }} 배포를 건너뜁니다. 없는 시크릿:$MISSING"
+            exit 0
           fi
+
+          # 게임별 토큰은 시크릿 이름이 동적이라 자동 마스킹이 걸리지 않는다.
+          # 로그에 새지 않도록 직접 마스킹한 뒤 넘긴다.
+          echo "::add-mask::$TOKEN"
+          {
+            echo "VERCEL_DEPLOY_TOKEN=$TOKEN"
+            echo "VERCEL_ORG_ID=$ORG"
+            echo "VERCEL_PROJECT_ID=$PROJECT_ID"
+          } >> "$GITHUB_ENV"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Deploy ${{ matrix.app.slug }}
         if: steps.check.outputs.ready == 'true'
+        # VERCEL_ORG_ID / VERCEL_PROJECT_ID 는 앞 스텝이 GITHUB_ENV 에 넣었고
+        # CLI 가 환경변수로 알아서 읽는다.
         run: >
           vercel --prod --yes
           --local-config apps/${{ matrix.app.slug }}/vercel.json
-          --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets[format('VERCEL_PROJECT_ID_{0}', matrix.app.secret)] }}
+          --token="$VERCEL_DEPLOY_TOKEN"
