@@ -939,6 +939,11 @@ function PetTown({ session }: { session: Session }) {
           <button
             type="button"
             className="pt-hud__leave"
+            // **튜토리얼 중에도 눌려야 한다.** 오버레이는 표식이 없는 것을 전부
+            // 덮으므로, 이게 없으면 처음 온 사람은 튜토리얼을 끝내거나 건너뛸
+            // 때까지 나갈 수 없다 — 공용 기기에서 나가기는 안전장치라 어느
+            // 화면에서도 막히면 안 된다(TutorialOverlay 의 PASS_ATTR).
+            data-pt-tutorial-pass=""
             onClick={() => setLeaving(true)}
             aria-label={`${session.nickname} 님으로 로그인 중 — 나가기`}
           >
