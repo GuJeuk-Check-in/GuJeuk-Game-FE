@@ -34,9 +34,10 @@ interface Stored extends Session {
  * 세션이 끝난 이유. **화면이 "나갔다"와 "쫓겨났다"를 구분해 알려야 한다.**
  *
  * 쫓겨난 사람은 자기가 뭘 눌러서 그렇게 된 것이 아니므로, 이유를 읽지 못하면
- * 게임이 고장 났다고 생각한다.
+ * 게임이 고장 났다고 생각한다. 'idle'(한동안 조작이 없어 자동으로 나감)과
+ * 'expired'(토큰 만료)는 둘 다 그런 경우이고, 사람에게는 서로 다른 사건이다.
  */
-export type SessionEndReason = 'logout' | 'expired'
+export type SessionEndReason = 'logout' | 'idle' | 'expired'
 
 type Listener = (reason: SessionEndReason) => void
 
@@ -109,9 +110,12 @@ export function beginSession(result: AuthResult): Session {
  *
  * 순서가 규칙이기 때문이다 — 서버에 올리고, 성공했을 때만 로컬을 지운다
  * (§10). 그 판단은 세이브를 들고 있는 쪽(usePet)이 하고, 여기는 신원만 버린다.
+ *
+ * 이유를 인자로 받는 것은 화면이 안내 문구를 고를 수 있게 하려는 것이다. 버튼을
+ * 눌러 나간 사람에게는 할 말이 없지만, 자동으로 나간 사람에게는 있다.
  */
-export function endSession(): void {
-  clear('logout')
+export function endSession(reason: 'logout' | 'idle' = 'logout'): void {
+  clear(reason)
 }
 
 /**

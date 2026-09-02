@@ -31,7 +31,7 @@ export interface Blip {
 }
 
 export type SoundName =
-  'tap' | 'feed' | 'wash' | 'coin' | 'levelUp' | 'refuse' | 'jump' | 'hit' | 'catch'
+  'tap' | 'feed' | 'wash' | 'coin' | 'levelUp' | 'refuse' | 'jump' | 'hit' | 'catch' | 'leaving'
 
 /**
  * 소리표.
@@ -61,6 +61,21 @@ export const BLIPS: Record<SoundName, readonly Blip[]> = {
   refuse: [{ from: 320, to: 200, seconds: 0.12, type: 'square', gain: 0.16 }],
   hit: [{ from: 260, to: 90, seconds: 0.22, type: 'sawtooth', gain: 0.2 }],
   jump: [{ from: 300, to: 620, seconds: 0.09, type: 'square', gain: 0.16 }],
+  /**
+   * 곧 자동으로 나간다는 알림. 자리를 뜬 사람을 불러 세우는 소리다.
+   *
+   * refuse 를 돌려쓰지 않는다 — 그 소리는 "방금 누른 것이 안 됐다"는 뜻이라,
+   * 아무것도 누르지 않았는데 그 소리가 나면 사람은 자기 실수를 찾는다. 위 주석의
+   * 규칙이 그대로 적용되는 자리다.
+   *
+   * 두 음을 천천히 내려 긋는다. 짧은 삑 소리는 다른 효과음에 묻히는데, 이 소리는
+   * **화면을 보고 있지 않은 사람**에게 닿아야 한다. 다른 어떤 소리보다 길고
+   * 조금 크다.
+   */
+  leaving: [
+    { from: 660, to: 660, seconds: 0.16, type: 'triangle', gain: 0.22 },
+    { from: 440, to: 330, seconds: 0.34, type: 'triangle', gain: 0.22 },
+  ],
 }
 
 const MUTE_KEY = 'gj.pet.muted'

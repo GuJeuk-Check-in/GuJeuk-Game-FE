@@ -592,6 +592,80 @@
   margin-top: 8px;
 }
 
+/* ---- 유휴 경고 ------------------------------------------------------------ */
+
+/* **셸 밖에서 화면 전체를 덮는다**(fixed). 충돌·나가기 카드가 스테이지 안에
+   absolute 로 사는 것과 다른 이유는, 이 카드가 미니게임 중에도 떠야 하기
+   때문이다 — 그때 스테이지 안은 캔버스가 차지하고 있다.
+
+   z-index 는 **튜토리얼(.pt-tut 의 100)보다 위**여야 한다. 튜토리얼을 읽다가
+   시간이 다 된 사람이 이 카드를 못 보면 안내 없이 튕기는 것과 같아진다. */
+.pt-idle {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  /* 뒤를 완전히 가리지 않는다. 하던 것이 그대로 있는 게 보여야 "잠깐 멈춘 것"
+     으로 읽힌다 — 다 지워진 화면은 이미 나간 것처럼 보인다. */
+  background: color-mix(in srgb, var(--pt-ink) 78%, transparent);
+  z-index: 110;
+}
+
+.pt-idle__sheet {
+  width: 100%;
+  max-width: 300px;
+  padding: 20px;
+  background: var(--pt-panel);
+  /* 경고 색으로 테두리를 두른다. 팔레트에서 경고로 읽히는 유일한 색이다. */
+  border: 2px solid var(--pt-c3);
+  border-radius: var(--gj-radius-lg);
+  text-align: center;
+}
+
+.pt-idle__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.pt-idle__lead {
+  margin: 8px 0 0;
+  color: var(--pt-dim);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 숫자를 크게 둔다. 이 카드에서 사람이 가장 먼저 봐야 하는 것이 남은 시간이다.
+   tabular-nums 가 없으면 10 → 9 로 넘어갈 때 숫자 폭이 바뀌어 덜컹거린다. */
+.pt-idle__count {
+  margin: 10px 0 0;
+  color: var(--pt-c3);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pt-idle__count strong {
+  font-size: 40px;
+  line-height: 1.1;
+  /* 아래 글자와 기준선을 맞춘다. */
+  vertical-align: -2px;
+}
+
+.pt-idle__stay {
+  margin-top: 14px;
+  width: 100%;
+  /* 손이 헤매지 않게 다른 버튼보다 크게 둔다. 30초 안에 눌러야 하는 버튼이다. */
+  min-height: calc(var(--gj-tap) + 8px);
+}
+
+.pt-idle__note {
+  margin: 12px 0 0;
+  color: var(--pt-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* ---- 이름 입력 ----------------------------------------------------------- */
 
 .pt-prompt {

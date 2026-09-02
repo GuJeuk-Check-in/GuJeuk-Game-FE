@@ -48,10 +48,12 @@ import { Toast } from './components/Toast'
 import { AuthScreen } from './components/AuthScreen'
 import { ConflictCard } from './components/ConflictCard'
 import { LogoutSheet } from './components/LogoutSheet'
+import { IdleWarning } from './components/IdleWarning'
+import { useIdleLogout } from './useIdleLogout'
 import { usePet } from './usePet'
 import type { ActionKind } from './usePet'
 import { beginSession, currentSession, onSessionEnd } from './session'
-import type { Session } from './session'
+import type { Session, SessionEndReason } from './session'
 import './App.css'
 
 /**
@@ -205,6 +207,24 @@ function toDecorEdit(decor: DecorUi | null): DecorEdit | null {
 }
 
 /**
+ * 로그인 화면으로 돌아온 이유를 사람 말로.
+ *
+ * 스스로 나간 사람에게는 할 말이 없다(null). 나머지 둘은 **사용자가 아무것도
+ * 누르지 않았는데** 일어난 일이라, 이유를 읽지 못하면 게임이 고장 났다고
+ * 생각한다. Record 로 둔 것은 이유가 하나 늘었을 때 문구 누락을 타입이 잡게
+ * 하기 위함이다.
+ */
+const NOTICE_OF: Record<SessionEndReason, string | null> = {
+  logout: null,
+  // **"저장했다"고 말하지 않는다.** 유휴로 나갈 때는 올리기에 실패해도 나가는데
+  // (usePet 의 logout), 그때 이 문장이 거짓이 된다. 반면 "이어서 놀 수 있다"는
+  // 양쪽 다 참이다 — 올렸으면 서버에, 못 올렸으면 이 기기에 남아 있고 다음
+  // 로그인에서 sync.ts 가 그것을 이어 준다.
+  idle: '한동안 조작이 없어서 자동으로 나왔어요. 다시 로그인하면 이어서 놀 수 있어요.',
+  expired: '로그인이 만료되어 나왔어요. 다시 로그인하면 이어서 놀 수 있어요.',
+}
+
+/**
  * 로그인 껍데기.
  *
  * **펫타운은 로그인이 입장 조건이다**(PET_SERVER_API.md §2). 다른 게임처럼
@@ -224,11 +244,7 @@ export default function App() {
     () =>
       onSessionEnd((reason) => {
         setSession(null)
-        setNotice(
-          reason === 'expired'
-            ? '로그인이 만료되어 나왔어요. 다시 로그인하면 이어서 놀 수 있어요.'
-            : null,
-        )
+        setNotice(NOTICE_OF[reason])
       }),
     [],
   )
@@ -311,6 +327,60 @@ function PetTown({ session }: { session: Session }) {
 
   /** 나가기 확인 시트가 떠 있는가. 공용 기기라 잘못 눌러 나가는 것도 사고다. */
   const [leaving, setLeaving] = useState(false)
+
+  /**
+   * 시간이 다 돼서 지금 나가는 중인가.
+   *
+   * **idle.state 와 따로 둔다.** 만료 뒤에도 조작 리스너는 살아 있어서, 그때
+   * 돌아온 사람이 화면을 건드리면 상태가 'active' 로 돌아간다. 그것만 보고
+   * 화면을 그리면 **나가는 중인데 평소처럼 놀 수 있는 것처럼 보이고**, 그 사이의
+   * 조작은 저장 경로가 이미 꺼져 있어 어디에도 남지 않는다(usePet 의 logout).
+   * 한번 켜지면 세션이 끝날 때까지 내리지 않는다 — 유휴 로그아웃은 올리기에
+   * 실패해도 반드시 세션을 끝내므로 이 값이 남은 채로 굳는 일이 없다.
+   */
+  const [leavingByIdle, setLeavingByIdle] = useState(false)
+
+  /**
+   * 자리를 뜬 사람을 5분 뒤에 내보낸다. (PET_SERVER_API.md §12 의 4번)
+   *
+   * **이른 return 보다 위에서 부른다** — 훅은 조건부로 부를 수 없고, 무엇보다
+   * 로딩·재시도 화면에 사람이 없는 경우에도 타이머는 돌아야 한다.
+   *
+   * 나가기 시트가 떠 있는 동안에도 끄지 않는다. 껐더니 **나가기를 눌러 놓고
+   * 자리를 뜬 사람에게 타이머가 영영 걸리지 않았다** — 시트를 내리는 길이 사람이
+   * "더 놀래요"를 누르는 것 하나뿐이라서다. 겹쳐서 두 번 나가는 것보다 한 번도
+   * 못 나가는 쪽이 훨씬 나쁘다.
+   */
+  const idle = useIdleLogout({
+    onExpire: () => {
+      setLeavingByIdle(true)
+      void logout('idle')
+    },
+  })
+
+  /**
+   * 곧 나간다는 것을 소리로도 알린다.
+   *
+   * **화면을 보고 있지 않은 사람에게 닿아야 하는 알림이라서다.** 두 번만 낸다 —
+   * 경고가 뜰 때 한 번, 10초를 남기고 한 번. 1초마다 내면 알림이 아니라 소음이
+   * 되고, 사람은 소리를 꺼 버린다.
+   *
+   * 남은 초를 그대로 비교하지 않고 단계로 접는 것은 tick 이 밀려 어떤 숫자를
+   * 건너뛰어도 울리게 하려는 것이다(백그라운드 탭에서 실제로 밀린다).
+   */
+  const beepedRef = useRef(0)
+  useEffect(() => {
+    if (idle.state.kind !== 'warning') {
+      beepedRef.current = 0
+      return
+    }
+
+    const step = idle.state.secondsLeft > 10 ? 1 : 2
+    if (beepedRef.current >= step) return
+
+    beepedRef.current = step
+    sound.play('leaving')
+  }, [idle.state])
 
   /** 끌기를 시작한 손끝과 가구 왼쪽 위의 차. 이걸 안 재면 잡는 순간 가구가 튄다. */
   const grabRef = useRef({ dx: FURNITURE_HALF, dy: FURNITURE_HALF })
@@ -1173,6 +1243,25 @@ function PetTown({ session }: { session: Session }) {
           canSkip={canSkip(save)}
           onConfirm={confirmTutorial}
           onSkip={skipTutorial}
+        />
+      ) : null}
+
+      {/* 유휴 경고는 **셸 밖, 맨 위**다. 미니게임 중에도 떠야 하기 때문이다 —
+          따라하기의 입력 단계는 시간 제한이 없어서 거기서 자리를 뜨면 판이 영원히
+          끝나지 않는다.
+
+          로딩·재시도·이름 입력 화면에는 이 카드가 없다. 그 화면들은 이른 return
+          으로 갈라져 나가는데, 거기서는 잃을 진행이 아직 없어서 예고 없이 나가도
+          잃는 것이 없다. 타이머 자체는 그 화면들에서도 돈다(위 useIdleLogout). */}
+      {leavingByIdle || idle.state.kind === 'warning' ? (
+        <IdleWarning
+          // 나가는 중이면 카드가 남은 초 대신 "정리하고 있어요"를 띄운다.
+          // 카드가 사라졌다 로그인 화면이 뜨기까지의 몇 초를 비워 두지 않는다.
+          secondsLeft={
+            leavingByIdle || idle.state.kind !== 'warning' ? null : idle.state.secondsLeft
+          }
+          nickname={session.nickname}
+          onStay={idle.keepAwake}
         />
       ) : null}
     </div>

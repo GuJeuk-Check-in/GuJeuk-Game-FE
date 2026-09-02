@@ -93,6 +93,18 @@ export interface ConflictPrompt {
 
 export type ConflictChoice = 'mine' | 'theirs'
 
+/**
+ * 나가는 이유. **실패했을 때의 처리가 갈린다.**
+ *
+ * 'manual' 은 사람이 버튼을 눌렀다. 올리지 못하면 알리고 그 자리에 붙잡아 둔다 —
+ * 무엇이 남았는지 알아야 하고, 다시 눌러 볼 사람이 거기 있다.
+ *
+ * 'idle' 은 자리를 뜬 사람을 내보내는 것이다. **알릴 상대가 없다.** 올리지
+ * 못했다고 로그인 상태로 남겨 두면 다음 사람이 앞사람 계정으로 계속 놀게 되어,
+ * 자동 로그아웃을 넣은 이유가 그대로 사라진다.
+ */
+export type LogoutReason = 'manual' | 'idle'
+
 export interface LogoutResult {
   ok: boolean
   /** 실패했을 때 사용자에게 그대로 보여줄 문구. 성공이면 null. */
@@ -237,7 +249,7 @@ export interface UsePetResult {
    * 올리지 못하면 지우지 않고 실패를 돌려준다. 순서를 뒤집으면 진행이
    * 사라지고, 지우지 않고 두면 다음 사람이 그 펫을 본다(§10).
    */
-  logout: () => Promise<LogoutResult>
+  logout: (reason?: LogoutReason) => Promise<LogoutResult>
   /** 서버를 못 만나 시작하지 못했을 때 다시 시도한다. */
   retryLoad: () => void
 }
@@ -271,6 +283,17 @@ const LOGOUT_FAILED =
   '진행을 서버에 올리지 못해서 나가지 않았어요. 연결을 확인하고 다시 눌러 주세요.'
 
 const LOGOUT_CONFLICT = '먼저 어느 쪽 진행을 쓸지 골라 주세요.'
+
+/**
+ * 자동 저장이 마침 올리는 중일 때 기다렸다 다시 시도하는 간격과 횟수.
+ *
+ * 30초마다 도는 올리기와 겹치면 push 가 'busy' 를 돌려주는데, 한 번만 시도하면
+ * **로그아웃이 확률적으로 실패한다.** 자리를 뜬 사람을 내보내는 경우에는 그
+ * 실패가 곧 "다음 사람이 앞사람 계정으로 논다"가 된다. 2초 안에 끝나는 대기라
+ * 사람이 기다린다고 느끼지도 않는다.
+ */
+const BUSY_RETRY_MS = 400
+const BUSY_RETRIES = 5
 
 /** 서버에 올린 결과. **충돌은 실패와 다르다** — 사람이 고르면 이어서 올라간다. */
 type PushResult = 'ok' | 'conflict' | 'failed' | 'busy'
@@ -413,6 +436,27 @@ export function usePet(session: Session): UsePetResult {
       }
     },
     [keys.sync],
+  )
+
+  /**
+   * **반드시 올려야 하는 자리**에서 쓰는 올리기. 로그아웃이 그렇다.
+   *
+   * 자동 저장과 겹쳐 'busy' 가 나오면 잠깐 기다렸다 다시 시도한다. 자동 저장은
+   * 한 번 걸러도 30초 뒤에 다시 오지만, 로그아웃은 다시 오지 않는다 — 여기서
+   * 포기하면 그 세션의 마지막 진행이 서버에 없는 채로 사람이 나간다.
+   */
+  const pushInsisting = useCallback(
+    async (next: PetSave): Promise<PushResult> => {
+      let result = await push(next)
+
+      for (let retry = 0; result === 'busy' && retry < BUSY_RETRIES; retry += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, BUSY_RETRY_MS))
+        result = await push(next)
+      }
+
+      return result
+    },
+    [push],
   )
 
   // ---- 첫 진입 -------------------------------------------------------------
@@ -677,46 +721,76 @@ export function usePet(session: Session): UsePetResult {
    * 로그아웃. **올리고 나서 지운다.**
    *
    * 순서가 규칙이다(§10). 올리기 전에 지우면 진행이 사라지고, 지우지 않고 두면
-   * 다음 사람이 그 펫을 본다. 그래서 올리지 못하면 아무것도 지우지 않고 나가지도
-   * 않는다 — 무엇이 남았는지 사용자가 알아야 한다.
+   * 다음 사람이 그 펫을 본다. 그래서 사람이 누른 경우에는 올리지 못하면 아무것도
+   * 지우지 않고 나가지도 않는다 — 무엇이 남았는지 사용자가 알아야 한다.
+   *
+   * **자리를 뜬 사람을 내보내는 경우('idle')는 다르다.** 알릴 상대가 없으므로
+   * 올리지 못해도 신원은 버린다. 그때 로컬 세이브는 **지우지 않는다** — 올리지
+   * 못한 진행이 거기 있고, 키가 회원마다 나뉘어 있어(saveKey) 다음 사람에게
+   * 보이지 않는다. 그 사람이 다시 로그인하면 sync.ts 가 이어 준다.
    */
-  const logout = useCallback(async (): Promise<LogoutResult> => {
-    const storage = getStorage()
+  const logout = useCallback(
+    async (reason: LogoutReason = 'manual'): Promise<LogoutResult> => {
+      const storage = getStorage()
 
-    // 저장 경로를 **먼저** 끈다. 아래에서 지운 뒤에 언마운트 정리나
-    // visibilitychange 가 한 번 더 돌면 그 키가 되살아난다.
-    stoppedRef.current = true
+      // 저장 경로를 **먼저** 끈다. 아래에서 지운 뒤에 언마운트 정리나
+      // visibilitychange 가 한 번 더 돌면 그 키가 되살아난다.
+      stoppedRef.current = true
 
-    const finish = () => {
-      if (storage) {
-        clearSave(storage, keys.save)
-        clearSyncBase(storage, keys.sync)
+      const finish = () => {
+        // 지우는 것은 올리기가 끝난 뒤다. 여기 오기까지 걸린 시간 동안 화면은
+        // 조작을 받지 않는다 — 유휴로 나가는 중이면 카드가 덮고 있고, 사람이
+        // 누른 경우에는 나가기 시트가 덮고 있다.
+        if (storage) {
+          clearSave(storage, keys.save)
+          clearSyncBase(storage, keys.sync)
+        }
+        // 'manual' 은 세션 쪽에서 'logout' 이다. 이름이 다른 것은 두 모듈이 보는
+        // 것이 달라서다 — 여기서는 "사람이 눌렀다", 저기서는 "스스로 나갔다".
+        endSession(reason === 'idle' ? 'idle' : 'logout')
       }
-      endSession()
-    }
 
-    const current = saveRef.current
+      const current = saveRef.current
 
-    // 이름을 짓기 전이면 올릴 것이 없다.
-    if (!current) {
+      /**
+       * 올릴 것이 없다. **그렇다고 로컬을 지우지도 않는다.**
+       *
+       * 이름을 짓기 전이면 지울 것도 없어서 어느 쪽이든 같지만, 한 경우가 다르다 —
+       * **세이브를 읽지 못했고 백업도 만들지 못한 경우**(load 에서 loadSave 가
+       * 던진 경로)다. 그때 원본은 아직 그 자리에 있고, 우리는 화면에 "원본은
+       * 지우지 않았습니다"라고 적어 두었다. 여기서 지우면 그 말이 거짓이 되고,
+       * 이 게임에서 유일하게 되돌릴 수 없는 일이 일어난다(§1).
+       *
+       * 남겨 두어도 다음 사람에게 보이지 않는다. 키가 회원마다 나뉘어 있다.
+       */
+      if (!current) {
+        endSession(reason === 'idle' ? 'idle' : 'logout')
+        return { ok: true, message: null }
+      }
+
+      const result = await pushInsisting(current)
+
+      if (result !== 'ok') {
+        if (reason === 'idle') {
+          // 세이브는 두고 신원만 버린다. 다음 사람이 앞사람 계정으로 노는 것을
+          // 막는 것이 이 경로의 목적이고, 그 목적이 올리기 성공보다 앞선다.
+          endSession('idle')
+          return { ok: true, message: null }
+        }
+
+        // 나가지 못했으니 계속 놀 수 있어야 한다. 저장 경로를 되돌린다.
+        stoppedRef.current = false
+
+        if (result === 'conflict') return { ok: false, message: LOGOUT_CONFLICT }
+        if (result === 'busy') return { ok: false, message: LOGOUT_BUSY }
+        return { ok: false, message: LOGOUT_FAILED }
+      }
+
       finish()
       return { ok: true, message: null }
-    }
-
-    const result = await push(current)
-
-    if (result !== 'ok') {
-      // 나가지 못했으니 계속 놀 수 있어야 한다. 저장 경로를 되돌린다.
-      stoppedRef.current = false
-
-      if (result === 'conflict') return { ok: false, message: LOGOUT_CONFLICT }
-      if (result === 'busy') return { ok: false, message: LOGOUT_BUSY }
-      return { ok: false, message: LOGOUT_FAILED }
-    }
-
-    finish()
-    return { ok: true, message: null }
-  }, [keys.save, keys.sync, push])
+    },
+    [keys.save, keys.sync, pushInsisting],
+  )
 
   // ---- 조작 ---------------------------------------------------------------
 
