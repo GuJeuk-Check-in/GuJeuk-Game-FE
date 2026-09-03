@@ -94,7 +94,9 @@ export function Board({
       </div>
       <div className="ttt-player-row" aria-label={`현재 ${turn} 차례`}>
         <PlayerChip mark="X" label={xLabel} active={turn === 'X'} />
-        <div className="ttt-turn-arrow" aria-hidden="true">VS</div>
+        <div className="ttt-turn-arrow" aria-hidden="true">
+          VS
+        </div>
         <PlayerChip mark="O" label={oLabel} active={turn === 'O'} />
       </div>
       <div className="ttt-board" role="grid" aria-label="틱택토 판">
@@ -120,7 +122,9 @@ export function Board({
                 </span>
               ) : null}
               {isVanishing ? (
-                <span className="ttt-vanish-badge" aria-hidden="true">곧</span>
+                <span className="ttt-vanish-badge" aria-hidden="true">
+                  곧
+                </span>
               ) : null}
             </button>
           )
@@ -133,7 +137,9 @@ export function Board({
 
 function PlayerChip({ mark, label, active }: { mark: Mark; label: string; active: boolean }) {
   return (
-    <div className={`ttt-player-chip ttt-player-chip--${mark.toLowerCase()} ${active ? 'is-active' : ''}`}>
+    <div
+      className={`ttt-player-chip ttt-player-chip--${mark.toLowerCase()} ${active ? 'is-active' : ''}`}
+    >
       <GameMark value={mark} compact />
       <span>{label}</span>
       {active ? <strong>내 차례!</strong> : null}

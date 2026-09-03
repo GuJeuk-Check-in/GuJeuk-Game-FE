@@ -72,7 +72,11 @@ function ensureMusic(): void {
   musicTimer = window.setInterval(playBeat, arrangement.tempoMs)
 }
 
-function playMusicStep(audioContext: AudioContext, arrangement: MusicArrangement, beat: number): void {
+function playMusicStep(
+  audioContext: AudioContext,
+  arrangement: MusicArrangement,
+  beat: number,
+): void {
   const lead = arrangement.lead[beat % arrangement.lead.length]
   if (lead !== undefined) {
     ring(audioContext, {
@@ -87,13 +91,25 @@ function playMusicStep(audioContext: AudioContext, arrangement: MusicArrangement
   if (arrangement.bass.length > 0) {
     const bass = arrangement.bass[beat % arrangement.bass.length]
     if (bass !== undefined && bass > 0) {
-      ring(audioContext, { from: bass, to: bass, duration: 0.2, gain: arrangement.bassGain, wave: 'sine' })
+      ring(audioContext, {
+        from: bass,
+        to: bass,
+        duration: 0.2,
+        gain: arrangement.bassGain,
+        wave: 'sine',
+      })
     }
   }
   if (arrangement.sparkle.length > 0) {
     const sparkle = arrangement.sparkle[beat % arrangement.sparkle.length]
     if (sparkle !== undefined && sparkle > 0) {
-      ring(audioContext, { from: sparkle, to: sparkle, duration: 0.09, gain: arrangement.sparkleGain, wave: 'sine' })
+      ring(audioContext, {
+        from: sparkle,
+        to: sparkle,
+        duration: 0.09,
+        gain: arrangement.sparkleGain,
+        wave: 'sine',
+      })
     }
   }
   if (arrangement.kickEvery > 0 && beat % arrangement.kickEvery === 0) {

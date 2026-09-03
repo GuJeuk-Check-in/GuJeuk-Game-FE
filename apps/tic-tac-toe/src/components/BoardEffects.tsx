@@ -5,7 +5,10 @@ const CONFETTI_PIECES = Array.from({ length: 16 }, (_, index) => index)
 
 export function BoardAtmosphere({ turn, victory }: { turn: Mark; victory: boolean }) {
   return (
-    <div className={`ttt-atmosphere ttt-atmosphere--${turn.toLowerCase()} ${victory ? 'is-victory' : ''}`} aria-hidden="true">
+    <div
+      className={`ttt-atmosphere ttt-atmosphere--${turn.toLowerCase()} ${victory ? 'is-victory' : ''}`}
+      aria-hidden="true"
+    >
       <span className="ttt-atmosphere__rays" />
       <span className="ttt-atmosphere__orb ttt-atmosphere__orb--one" />
       <span className="ttt-atmosphere__orb ttt-atmosphere__orb--two" />

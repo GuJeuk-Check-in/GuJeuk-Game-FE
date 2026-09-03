@@ -843,12 +843,7 @@ export class AlkkagiGame {
     ctx.restore()
   }
 
-  private drawBoardLabel(
-    ctx: CanvasRenderingContext2D,
-    label: string,
-    x: number,
-    y: number,
-  ): void {
+  private drawBoardLabel(ctx: CanvasRenderingContext2D, label: string, x: number, y: number): void {
     ctx.save()
     ctx.translate(x, y)
     if (this.flipped) ctx.rotate(Math.PI)
@@ -884,7 +879,10 @@ export class AlkkagiGame {
     // 눈대중으로 겨누는 것이 이 게임의 재미다.
     if (this.dragging && this.dragPoint) {
       const { position } = this.dragging.body
-      const pull = Math.min(distance(position.x, position.y, this.dragPoint.x, this.dragPoint.y), MAX_PULL)
+      const pull = Math.min(
+        distance(position.x, position.y, this.dragPoint.x, this.dragPoint.y),
+        MAX_PULL,
+      )
       const power = pull / MAX_PULL
       ctx.strokeStyle = power > 0.78 ? '#ff3d8a' : '#7c3aed'
       ctx.lineWidth = 5 + power * 5

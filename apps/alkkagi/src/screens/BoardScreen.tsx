@@ -115,10 +115,14 @@ export function BoardScreen({ match }: { match: Match }) {
             </span>
           </div>
           <div className="ak-counts">
-            <span className={`ak-chip ak-chip--black ${snapshot.turn === 'black' ? 'is-turn' : ''}`}>
+            <span
+              className={`ak-chip ak-chip--black ${snapshot.turn === 'black' ? 'is-turn' : ''}`}
+            >
               <span className="ak-stone-dot" /> 흑 {snapshot.black}
             </span>
-            <span className={`ak-chip ak-chip--white ${snapshot.turn === 'white' ? 'is-turn' : ''}`}>
+            <span
+              className={`ak-chip ak-chip--white ${snapshot.turn === 'white' ? 'is-turn' : ''}`}
+            >
               <span className="ak-stone-dot" /> 백 {snapshot.white}
             </span>
             <MuteButton className="ak-audio" />

@@ -23,25 +23,25 @@
 
 ## 2. Color Palette
 
-| Token | Value | Purpose |
-| --- | --- | --- |
-| `--gj-candy-bg` | `#FFF3DB` | 전체 크림 배경 |
-| `--gj-candy-surface` | `#FFFFFF` | 카드와 경기판 |
-| `--gj-candy-surface-2` | `#FFE0B8` | 보조 패널 |
-| `--gj-candy-ink` | `#2B1E3D` | 본문·외곽선 |
-| `--gj-candy-ink-soft` | `#5A4A6E` | 보조 문구 |
-| `--gj-candy-sky` | `#8FDDF7` | 하늘·정보 |
-| `--gj-candy-grass` | `#B6EFA0` | 운동장·긍정 배경 |
-| `--gj-candy-p1` | `#FFB020` | 플레이어 X/1 |
-| `--gj-candy-p2` | `#2477C7` | 플레이어 O/2 |
-| `--gj-candy-accent` | `#FFC93C` | 주요 행동·보상 |
-| `--gj-candy-grape` | `#7C3AED` | 특수 상태·스킬 |
-| `--gj-candy-spark` | `#FF3D8A` | 축하·강조 |
-| `--gj-candy-success` | `#2FBF6B` | 성공 면 |
-| `--gj-candy-success-ink` | `#177A45` | 성공 텍스트 |
-| `--gj-candy-danger` | `#D81E3C` | 오류·위험 |
-| `--gj-candy-danger-ink` | `#A8102A` | 위험 텍스트 |
-| `--gj-candy-focus` | `#5B21B6` | 키보드 포커스 |
+| Token                    | Value     | Purpose          |
+| ------------------------ | --------- | ---------------- |
+| `--gj-candy-bg`          | `#FFF3DB` | 전체 크림 배경   |
+| `--gj-candy-surface`     | `#FFFFFF` | 카드와 경기판    |
+| `--gj-candy-surface-2`   | `#FFE0B8` | 보조 패널        |
+| `--gj-candy-ink`         | `#2B1E3D` | 본문·외곽선      |
+| `--gj-candy-ink-soft`    | `#5A4A6E` | 보조 문구        |
+| `--gj-candy-sky`         | `#8FDDF7` | 하늘·정보        |
+| `--gj-candy-grass`       | `#B6EFA0` | 운동장·긍정 배경 |
+| `--gj-candy-p1`          | `#FFB020` | 플레이어 X/1     |
+| `--gj-candy-p2`          | `#2477C7` | 플레이어 O/2     |
+| `--gj-candy-accent`      | `#FFC93C` | 주요 행동·보상   |
+| `--gj-candy-grape`       | `#7C3AED` | 특수 상태·스킬   |
+| `--gj-candy-spark`       | `#FF3D8A` | 축하·강조        |
+| `--gj-candy-success`     | `#2FBF6B` | 성공 면          |
+| `--gj-candy-success-ink` | `#177A45` | 성공 텍스트      |
+| `--gj-candy-danger`      | `#D81E3C` | 오류·위험        |
+| `--gj-candy-danger-ink`  | `#A8102A` | 위험 텍스트      |
+| `--gj-candy-focus`       | `#5B21B6` | 키보드 포커스    |
 
 텍스트는 크림색 배경에서 `--gj-candy-ink`를 기본으로 사용한다. 노랑·연두 면 위에는 흰색 본문을 쓰지 않는다.
 

@@ -69,7 +69,11 @@ export function AlkkagiEffects({
   )
 }
 
-function readEvent(before: AlkkagiSnapshot, current: AlkkagiSnapshot, id: number): ArenaSplash | null {
+function readEvent(
+  before: AlkkagiSnapshot,
+  current: AlkkagiSnapshot,
+  id: number,
+): ArenaSplash | null {
   if (current.black < before.black || current.white < before.white) {
     return { id, kind: 'ringout', eyebrow: '통쾌한 한 방!', label: '링 아웃!' }
   }
@@ -82,7 +86,12 @@ function readEvent(before: AlkkagiSnapshot, current: AlkkagiSnapshot, id: number
     return { id, kind: 'launch', eyebrow: '힘껏 날아간다', label: '슈우웅!' }
   }
   if (current.turn !== before.turn && current.turn !== null && !current.settling) {
-    return { id, kind: 'turn', eyebrow: '다음 공격', label: current.turn === 'black' ? '흑 차례!' : '백 차례!' }
+    return {
+      id,
+      kind: 'turn',
+      eyebrow: '다음 공격',
+      label: current.turn === 'black' ? '흑 차례!' : '백 차례!',
+    }
   }
   return null
 }

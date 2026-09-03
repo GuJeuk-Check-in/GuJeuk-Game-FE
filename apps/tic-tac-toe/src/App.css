@@ -60,25 +60,39 @@
   place-items: center;
   pointer-events: none;
   opacity: 0.72;
-  transition: filter 260ms var(--gj-ease), opacity 260ms var(--gj-ease);
+  transition:
+    filter 260ms var(--gj-ease),
+    opacity 260ms var(--gj-ease);
 }
 
 .ttt-atmosphere__rays {
   width: min(86vmin, 720px);
   aspect-ratio: 1;
   border-radius: 50%;
-  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--gj-accent) 28%, transparent) 0 9deg, transparent 9deg 19deg);
+  background: repeating-conic-gradient(
+    from 0deg,
+    color-mix(in srgb, var(--gj-accent) 28%, transparent) 0 9deg,
+    transparent 9deg 19deg
+  );
   filter: blur(1px);
   opacity: 0.52;
   animation: ttt-rays-spin 18s linear infinite;
 }
 
 .ttt-stage--x .ttt-atmosphere__rays {
-  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, #ffb020 30%, transparent) 0 9deg, transparent 9deg 19deg);
+  background: repeating-conic-gradient(
+    from 0deg,
+    color-mix(in srgb, #ffb020 30%, transparent) 0 9deg,
+    transparent 9deg 19deg
+  );
 }
 
 .ttt-stage--o .ttt-atmosphere__rays {
-  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, #2477c7 24%, transparent) 0 9deg, transparent 9deg 19deg);
+  background: repeating-conic-gradient(
+    from 0deg,
+    color-mix(in srgb, #2477c7 24%, transparent) 0 9deg,
+    transparent 9deg 19deg
+  );
 }
 
 .ttt-atmosphere__orb {
@@ -86,7 +100,11 @@
   width: clamp(120px, 28vw, 260px);
   aspect-ratio: 1;
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--gj-accent) 48%, white), transparent 68%);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--gj-accent) 48%, white),
+    transparent 68%
+  );
   filter: blur(14px);
   animation: ttt-orb-breathe 3.2s ease-in-out infinite alternate;
 }
@@ -221,10 +239,14 @@
   border: 4px solid #2b1e3d;
   border-radius: 30px;
   background: linear-gradient(145deg, #7c3aed, #5b21b6);
-  box-shadow: 0 10px 0 rgba(43, 30, 61, 0.28), 0 18px 32px rgba(91, 33, 182, 0.2);
+  box-shadow:
+    0 10px 0 rgba(43, 30, 61, 0.28),
+    0 18px 32px rgba(91, 33, 182, 0.2);
   aspect-ratio: 1;
   z-index: 2;
-  transition: filter 220ms var(--gj-ease), transform 220ms var(--gj-ease);
+  transition:
+    filter 220ms var(--gj-ease),
+    transform 220ms var(--gj-ease);
 }
 
 .ttt-stage.is-victory .ttt-board {
@@ -244,8 +266,12 @@
   font-weight: 800;
   cursor: pointer;
   touch-action: manipulation;
-  box-shadow: inset 0 -7px 0 rgba(255, 176, 32, 0.16), 0 5px 0 rgba(43, 30, 61, 0.2);
-  transition: transform 120ms var(--gj-ease), background 120ms var(--gj-ease);
+  box-shadow:
+    inset 0 -7px 0 rgba(255, 176, 32, 0.16),
+    0 5px 0 rgba(43, 30, 61, 0.2);
+  transition:
+    transform 120ms var(--gj-ease),
+    background 120ms var(--gj-ease);
 
   /*
    * 그리드 항목의 기본 최소 크기는 auto(=내용 크기)라 1fr보다 커질 수 있다.
@@ -315,7 +341,9 @@
   inset: 5%;
   border: clamp(9px, 2vw, 15px) solid #2477c7;
   border-radius: 50%;
-  box-shadow: inset 0 0 0 2px #2b1e3d, 0 0 0 2px #2b1e3d;
+  box-shadow:
+    inset 0 0 0 2px #2b1e3d,
+    0 0 0 2px #2b1e3d;
 }
 
 .ttt-mark.is-compact {
@@ -415,7 +443,9 @@
   aspect-ratio: 1;
   border: 7px solid var(--ttt-impact-color);
   border-radius: 50%;
-  box-shadow: 0 0 0 5px color-mix(in srgb, white 82%, transparent), 0 0 22px var(--ttt-impact-color);
+  box-shadow:
+    0 0 0 5px color-mix(in srgb, white 82%, transparent),
+    0 0 22px var(--ttt-impact-color);
   animation: ttt-impact-ring var(--ttt-burst) var(--gj-ease) both;
 }
 
@@ -432,13 +462,34 @@
   animation: ttt-impact-particle var(--ttt-burst) var(--ttt-spring) both;
 }
 
-.ttt-impact__particle:nth-child(3) { --tx: 54px; --ty: -54px; }
-.ttt-impact__particle:nth-child(4) { --tx: 76px; --ty: 0px; }
-.ttt-impact__particle:nth-child(5) { --tx: 54px; --ty: 54px; }
-.ttt-impact__particle:nth-child(6) { --tx: 0px; --ty: 76px; }
-.ttt-impact__particle:nth-child(7) { --tx: -54px; --ty: 54px; }
-.ttt-impact__particle:nth-child(8) { --tx: -76px; --ty: 0px; }
-.ttt-impact__particle:nth-child(9) { --tx: -54px; --ty: -54px; }
+.ttt-impact__particle:nth-child(3) {
+  --tx: 54px;
+  --ty: -54px;
+}
+.ttt-impact__particle:nth-child(4) {
+  --tx: 76px;
+  --ty: 0px;
+}
+.ttt-impact__particle:nth-child(5) {
+  --tx: 54px;
+  --ty: 54px;
+}
+.ttt-impact__particle:nth-child(6) {
+  --tx: 0px;
+  --ty: 76px;
+}
+.ttt-impact__particle:nth-child(7) {
+  --tx: -54px;
+  --ty: 54px;
+}
+.ttt-impact__particle:nth-child(8) {
+  --tx: -76px;
+  --ty: 0px;
+}
+.ttt-impact__particle:nth-child(9) {
+  --tx: -54px;
+  --ty: -54px;
+}
 
 .ttt-victory-burst {
   position: absolute;
@@ -454,7 +505,9 @@
   inset: 18%;
   border: 14px double white;
   border-radius: 50%;
-  box-shadow: 0 0 0 10px color-mix(in srgb, var(--gj-accent) 70%, transparent), 0 0 48px var(--gj-accent);
+  box-shadow:
+    0 0 0 10px color-mix(in srgb, var(--gj-accent) 70%, transparent),
+    0 0 48px var(--gj-accent);
   animation: ttt-victory-halo var(--ttt-celebrate) var(--gj-ease) both;
 }
 
@@ -472,24 +525,76 @@
   animation: ttt-confetti var(--ttt-celebrate) var(--ttt-spring) both;
 }
 
-.ttt-victory-burst__piece:nth-child(3n) { background: #8fddf7; }
-.ttt-victory-burst__piece:nth-child(3n + 1) { background: #ffc93c; }
-.ttt-victory-burst__piece:nth-child(2) { --confetti-x: 170px; --confetti-y: -120px; }
-.ttt-victory-burst__piece:nth-child(3) { --confetti-x: 210px; --confetti-y: -30px; }
-.ttt-victory-burst__piece:nth-child(4) { --confetti-x: 185px; --confetti-y: 90px; }
-.ttt-victory-burst__piece:nth-child(5) { --confetti-x: 120px; --confetti-y: 170px; }
-.ttt-victory-burst__piece:nth-child(6) { --confetti-x: 25px; --confetti-y: 210px; }
-.ttt-victory-burst__piece:nth-child(7) { --confetti-x: -80px; --confetti-y: 190px; }
-.ttt-victory-burst__piece:nth-child(8) { --confetti-x: -170px; --confetti-y: 125px; }
-.ttt-victory-burst__piece:nth-child(9) { --confetti-x: -210px; --confetti-y: 20px; }
-.ttt-victory-burst__piece:nth-child(10) { --confetti-x: -185px; --confetti-y: -90px; }
-.ttt-victory-burst__piece:nth-child(11) { --confetti-x: -110px; --confetti-y: -170px; }
-.ttt-victory-burst__piece:nth-child(12) { --confetti-x: -20px; --confetti-y: -210px; }
-.ttt-victory-burst__piece:nth-child(13) { --confetti-x: 85px; --confetti-y: -190px; }
-.ttt-victory-burst__piece:nth-child(14) { --confetti-x: 145px; --confetti-y: 150px; }
-.ttt-victory-burst__piece:nth-child(15) { --confetti-x: -145px; --confetti-y: 155px; }
-.ttt-victory-burst__piece:nth-child(16) { --confetti-x: -150px; --confetti-y: -145px; }
-.ttt-victory-burst__piece:nth-child(17) { --confetti-x: 155px; --confetti-y: -150px; }
+.ttt-victory-burst__piece:nth-child(3n) {
+  background: #8fddf7;
+}
+.ttt-victory-burst__piece:nth-child(3n + 1) {
+  background: #ffc93c;
+}
+.ttt-victory-burst__piece:nth-child(2) {
+  --confetti-x: 170px;
+  --confetti-y: -120px;
+}
+.ttt-victory-burst__piece:nth-child(3) {
+  --confetti-x: 210px;
+  --confetti-y: -30px;
+}
+.ttt-victory-burst__piece:nth-child(4) {
+  --confetti-x: 185px;
+  --confetti-y: 90px;
+}
+.ttt-victory-burst__piece:nth-child(5) {
+  --confetti-x: 120px;
+  --confetti-y: 170px;
+}
+.ttt-victory-burst__piece:nth-child(6) {
+  --confetti-x: 25px;
+  --confetti-y: 210px;
+}
+.ttt-victory-burst__piece:nth-child(7) {
+  --confetti-x: -80px;
+  --confetti-y: 190px;
+}
+.ttt-victory-burst__piece:nth-child(8) {
+  --confetti-x: -170px;
+  --confetti-y: 125px;
+}
+.ttt-victory-burst__piece:nth-child(9) {
+  --confetti-x: -210px;
+  --confetti-y: 20px;
+}
+.ttt-victory-burst__piece:nth-child(10) {
+  --confetti-x: -185px;
+  --confetti-y: -90px;
+}
+.ttt-victory-burst__piece:nth-child(11) {
+  --confetti-x: -110px;
+  --confetti-y: -170px;
+}
+.ttt-victory-burst__piece:nth-child(12) {
+  --confetti-x: -20px;
+  --confetti-y: -210px;
+}
+.ttt-victory-burst__piece:nth-child(13) {
+  --confetti-x: 85px;
+  --confetti-y: -190px;
+}
+.ttt-victory-burst__piece:nth-child(14) {
+  --confetti-x: 145px;
+  --confetti-y: 150px;
+}
+.ttt-victory-burst__piece:nth-child(15) {
+  --confetti-x: -145px;
+  --confetti-y: 155px;
+}
+.ttt-victory-burst__piece:nth-child(16) {
+  --confetti-x: -150px;
+  --confetti-y: -145px;
+}
+.ttt-victory-burst__piece:nth-child(17) {
+  --confetti-x: 155px;
+  --confetti-y: -150px;
+}
 
 /* ---- 카드형 화면 (로그인 · 방 코드) -------------------------------------- */
 
@@ -722,72 +827,158 @@
 }
 
 @keyframes ttt-mark-pop {
-  0% { opacity: 0; transform: scale(0.25) rotate(-12deg); }
-  72% { transform: scale(1.12) rotate(3deg); }
-  100% { opacity: 1; transform: scale(1) rotate(0); }
+  0% {
+    opacity: 0;
+    transform: scale(0.25) rotate(-12deg);
+  }
+  72% {
+    transform: scale(1.12) rotate(3deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
 }
 
 @keyframes ttt-chip-bob {
-  50% { transform: translateY(-6px); }
+  50% {
+    transform: translateY(-6px);
+  }
 }
 
 @keyframes ttt-vanish-warning {
-  50% { transform: scale(0.96); }
+  50% {
+    transform: scale(0.96);
+  }
 }
 
 @keyframes ttt-depart {
-  0% { opacity: 0.7; transform: scale(1); }
-  100% { opacity: 0; transform: scale(0.25) rotate(16deg); }
+  0% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.25) rotate(16deg);
+  }
 }
 
 @keyframes ttt-win-cell {
-  40% { transform: translateY(-8px) rotate(-2deg); }
-  70% { transform: translateY(-4px) rotate(2deg); }
+  40% {
+    transform: translateY(-8px) rotate(-2deg);
+  }
+  70% {
+    transform: translateY(-4px) rotate(2deg);
+  }
 }
 
 @keyframes ttt-rays-spin {
-  to { transform: rotate(1turn); }
+  to {
+    transform: rotate(1turn);
+  }
 }
 
 @keyframes ttt-orb-breathe {
-  to { opacity: 0.55; transform: scale(1.22) translate3d(12px, -8px, 0); }
+  to {
+    opacity: 0.55;
+    transform: scale(1.22) translate3d(12px, -8px, 0);
+  }
 }
 
 @keyframes ttt-turn-splash {
-  0% { opacity: 0; filter: blur(6px); transform: translate(-50%, -30%) scale(0.72) rotate(-4deg); }
-  45% { opacity: 0.7; filter: blur(0); transform: translate(-50%, -50%) scale(1.08) rotate(1deg); }
-  100% { opacity: 0; filter: blur(2px); transform: translate(-50%, -62%) scale(1.18); }
+  0% {
+    opacity: 0;
+    filter: blur(6px);
+    transform: translate(-50%, -30%) scale(0.72) rotate(-4deg);
+  }
+  45% {
+    opacity: 0.7;
+    filter: blur(0);
+    transform: translate(-50%, -50%) scale(1.08) rotate(1deg);
+  }
+  100% {
+    opacity: 0;
+    filter: blur(2px);
+    transform: translate(-50%, -62%) scale(1.18);
+  }
 }
 
 @keyframes ttt-impact-ring {
-  0% { opacity: 0.95; transform: scale(0.18); }
-  72% { opacity: 0.8; transform: scale(1.25); }
-  100% { opacity: 0; transform: scale(1.65); }
+  0% {
+    opacity: 0.95;
+    transform: scale(0.18);
+  }
+  72% {
+    opacity: 0.8;
+    transform: scale(1.25);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.65);
+  }
 }
 
 @keyframes ttt-impact-particle {
-  0% { opacity: 1; transform: translate(0, 0) scale(0.3) rotate(0); }
-  70% { opacity: 1; transform: translate(var(--tx), var(--ty)) scale(1) rotate(160deg); }
-  100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.2) rotate(240deg); }
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(0.3) rotate(0);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(var(--tx), var(--ty)) scale(1) rotate(160deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--tx), var(--ty)) scale(0.2) rotate(240deg);
+  }
 }
 
 @keyframes ttt-board-victory {
-  35% { transform: scale(1.035) rotate(-1deg); }
-  58% { transform: scale(0.99) rotate(1deg); }
-  78% { transform: scale(1.018); }
+  35% {
+    transform: scale(1.035) rotate(-1deg);
+  }
+  58% {
+    transform: scale(0.99) rotate(1deg);
+  }
+  78% {
+    transform: scale(1.018);
+  }
 }
 
 @keyframes ttt-victory-halo {
-  0% { opacity: 0; filter: blur(8px); transform: scale(0.25) rotate(-20deg); }
-  45% { opacity: 0.9; filter: blur(0); transform: scale(1) rotate(8deg); }
-  100% { opacity: 0; transform: scale(1.35) rotate(24deg); }
+  0% {
+    opacity: 0;
+    filter: blur(8px);
+    transform: scale(0.25) rotate(-20deg);
+  }
+  45% {
+    opacity: 0.9;
+    filter: blur(0);
+    transform: scale(1) rotate(8deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35) rotate(24deg);
+  }
 }
 
 @keyframes ttt-confetti {
-  0% { opacity: 0; transform: translate(0, 0) scale(0.2) rotate(0); }
-  20% { opacity: 1; }
-  72% { opacity: 1; transform: translate(var(--confetti-x), var(--confetti-y)) scale(1) rotate(280deg); }
-  100% { opacity: 0; transform: translate(var(--confetti-x), calc(var(--confetti-y) + 55px)) scale(0.75) rotate(420deg); }
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.2) rotate(0);
+  }
+  20% {
+    opacity: 1;
+  }
+  72% {
+    opacity: 1;
+    transform: translate(var(--confetti-x), var(--confetti-y)) scale(1) rotate(280deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--confetti-x), calc(var(--confetti-y) + 55px)) scale(0.75)
+      rotate(420deg);
+  }
 }
 
 @media (max-width: 560px) {

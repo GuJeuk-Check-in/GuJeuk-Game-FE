@@ -40,7 +40,11 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
           </div>
           <div className="ttt-header__actions">
             <MuteButton className="ttt-btn--sm" />
-            <button className="gj-btn ttt-btn--sm" onClick={match.resign} disabled={Boolean(result)}>
+            <button
+              className="gj-btn ttt-btn--sm"
+              onClick={match.resign}
+              disabled={Boolean(result)}
+            >
               <Icon name="flag" size={15} />
               기권
             </button>
@@ -69,8 +73,8 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
         disabled={!myTurn}
         onPlace={match.place}
         turn={turn}
-        xLabel={myMark === 'X' ? profile?.nickname ?? '나' : opponent?.nickname ?? '상대'}
-        oLabel={myMark === 'O' ? profile?.nickname ?? '나' : opponent?.nickname ?? '상대'}
+        xLabel={myMark === 'X' ? (profile?.nickname ?? '나') : (opponent?.nickname ?? '상대')}
+        oLabel={myMark === 'O' ? (profile?.nickname ?? '나') : (opponent?.nickname ?? '상대')}
       />
 
       <ResultOverlay

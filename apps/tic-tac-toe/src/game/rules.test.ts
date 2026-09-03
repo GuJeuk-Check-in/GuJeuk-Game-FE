@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyMove, bestMove, createInitialState, evaluate, legalMoves, vanishingCell } from './rules'
+import {
+  applyMove,
+  bestMove,
+  createInitialState,
+  evaluate,
+  legalMoves,
+  vanishingCell,
+} from './rules'
 import type { GameState } from './types'
 
 describe('틱택토 순환 규칙', () => {
