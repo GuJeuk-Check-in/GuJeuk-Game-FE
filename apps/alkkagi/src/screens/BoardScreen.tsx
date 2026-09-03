@@ -1,8 +1,9 @@
-import { useCallback, useState } from 'react'
-import { GameCanvas, GameShell, ResultOverlay } from '@gujuck/ui'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { GameCanvas, GameShell, MuteButton, ResultOverlay, gameAudio } from '@gujuck/ui'
 import type { CanvasStage } from '@gujuck/game-core'
 import type { Skill } from '@gujuck/api'
 import { AlkkagiGame } from '../game/AlkkagiGame'
+import { AlkkagiEffects } from '../components/AlkkagiEffects'
 import type { Match } from '../useMatch'
 
 const SKILL_LABEL: Record<Skill, string> = {
@@ -32,22 +33,54 @@ export function BoardScreen({ match }: { match: Match }) {
     opponentPlaced,
     setSnapshot,
     attachGame,
+    flick,
+    useSkill: requestSkill,
+    turnEnd,
   } = match
 
   const [game, setGame] = useState<AlkkagiGame | null>(null)
   const [placed, setPlaced] = useState(false)
+  const [collisionId, setCollisionId] = useState(0)
+  const lastCollisionAt = useRef(0)
+
+  useEffect(() => {
+    if (phase !== 'over' || !result) return
+    gameAudio.play(result.won ? 'alk-win' : 'alk-lose')
+  }, [phase, result])
+
+  const collisionFeedback = useCallback(() => {
+    const now = performance.now()
+    if (now - lastCollisionAt.current < 90) return
+    lastCollisionAt.current = now
+    gameAudio.play('alk-collision')
+    setCollisionId((current) => current + 1)
+  }, [])
 
   // GameCanvas는 이 콜백을 마운트 시 한 번만 부른다. 돌려주는 함수에서 게임을
   // 확실히 정리해야 StrictMode 재마운트에서 루프가 두 벌 돌지 않는다.
   const handleMount = useCallback(
     (stage: CanvasStage) => {
+      let previousBlack = 5
+      let previousWhite = 5
       const instance = new AlkkagiGame({
         stage,
         myColor,
-        onChange: setSnapshot,
-        onFlickRequest: match.flick,
-        onSkillRequest: match.useSkill,
-        onSettled: match.turnEnd,
+        onChange: (next) => {
+          if (next.black < previousBlack || next.white < previousWhite) gameAudio.play('alk-fall')
+          previousBlack = next.black
+          previousWhite = next.white
+          setSnapshot(next)
+        },
+        onFlickRequest: (stoneId, vx, vy) => {
+          gameAudio.play('alk-launch')
+          flick(stoneId, vx, vy)
+        },
+        onSkillRequest: (skill, stoneId) => {
+          gameAudio.play('alk-skill')
+          requestSkill(skill, stoneId)
+        },
+        onSettled: turnEnd,
+        onCollision: collisionFeedback,
       })
 
       setGame(instance)
@@ -59,7 +92,7 @@ export function BoardScreen({ match }: { match: Match }) {
         attachGame(null)
       }
     },
-    [myColor, setSnapshot, attachGame, match.flick, match.turnEnd, match.useSkill],
+    [myColor, setSnapshot, attachGame, flick, turnEnd, requestSkill, collisionFeedback],
   )
 
   const confirmPlacement = () => {
@@ -82,8 +115,13 @@ export function BoardScreen({ match }: { match: Match }) {
             </span>
           </div>
           <div className="ak-counts">
-            <span className="ak-chip ak-chip--black">● {snapshot.black}</span>
-            <span className="ak-chip ak-chip--white">● {snapshot.white}</span>
+            <span className={`ak-chip ak-chip--black ${snapshot.turn === 'black' ? 'is-turn' : ''}`}>
+              <span className="ak-stone-dot" /> 흑 {snapshot.black}
+            </span>
+            <span className={`ak-chip ak-chip--white ${snapshot.turn === 'white' ? 'is-turn' : ''}`}>
+              <span className="ak-stone-dot" /> 백 {snapshot.white}
+            </span>
+            <MuteButton className="ak-audio" />
           </div>
         </div>
       }
@@ -122,9 +160,13 @@ export function BoardScreen({ match }: { match: Match }) {
                 <button
                   key={skill}
                   className={`ak-btn ak-btn--sm${snapshot.armingSkill === skill ? ' ak-btn--primary' : ''}`}
-                  onClick={() => game?.armSkill(skill)}
+                  onClick={() => {
+                    gameAudio.play('tap')
+                    game?.armSkill(skill)
+                  }}
                   disabled={!snapshot.usableSkills.includes(skill)}
                 >
+                  <span aria-hidden="true">{skill === 'GROW' ? '✦' : '⌾'}</span>
                   {SKILL_LABEL[skill]}
                 </button>
               ))}
@@ -137,7 +179,12 @@ export function BoardScreen({ match }: { match: Match }) {
         </div>
       }
     >
-      <GameCanvas onMount={handleMount} />
+      <div
+        className={`ak-arena-shell ak-arena-shell--${snapshot.turn ?? 'waiting'} ${snapshot.settling ? 'is-settling' : ''}`}
+      >
+        <GameCanvas onMount={handleMount} className="ak-canvas" />
+        <AlkkagiEffects snapshot={snapshot} collisionId={collisionId} />
+      </div>
 
       {notice && <div className="ak-toast">{notice}</div>}
 

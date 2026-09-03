@@ -8,13 +8,13 @@
  */
 
 :root {
-  --ak-bg: #0f1420;
-  --ak-panel: #1a2130;
-  --ak-line: #2b3446;
-  --ak-text: #e8ecf4;
-  --ak-muted: #9aa6bd;
-  --ak-accent: #4fc3f7;
-  --ak-danger: #ff7b7b;
+  --ak-bg: #fff3db;
+  --ak-panel: #ffffff;
+  --ak-line: #2b1e3d;
+  --ak-text: #2b1e3d;
+  --ak-muted: #5a4a6e;
+  --ak-accent: #ffc93c;
+  --ak-danger: #d81e3c;
   --ak-gap: clamp(0.5rem, 2vw, 1rem);
   --ak-radius: 14px;
 }
@@ -50,8 +50,9 @@ body {
   gap: var(--ak-gap);
   padding: clamp(1rem, 4vw, 1.75rem);
   background: var(--ak-panel);
-  border: 1px solid var(--ak-line);
-  border-radius: var(--ak-radius);
+  border: 4px solid var(--ak-line);
+  border-radius: 26px;
+  box-shadow: 0 9px 0 rgba(43, 30, 61, 0.24);
   box-sizing: border-box;
 }
 
@@ -79,8 +80,8 @@ body {
 .ak-join input {
   padding: 0.7rem 0.8rem;
   border-radius: 10px;
-  border: 1px solid var(--ak-line);
-  background: #121826;
+  border: 3px solid var(--ak-line);
+  background: #fffaf0;
   color: var(--ak-text);
   /* iOS는 16px 미만 입력창에 포커스가 가면 화면을 확대한다. */
   font-size: 16px;
@@ -97,14 +98,22 @@ body {
 .ak-btn {
   padding: 0.75rem 1rem;
   border-radius: 10px;
-  border: 1px solid var(--ak-line);
-  background: #202a3c;
+  border: 3px solid var(--ak-line);
+  background: #ffffff;
   color: var(--ak-text);
   font-size: clamp(0.85rem, 3vw, 0.95rem);
   font-weight: 600;
   cursor: pointer;
   /* 손가락으로 누를 수 있는 최소 크기. */
   min-height: 44px;
+  box-shadow: 0 5px 0 rgba(43, 30, 61, 0.22);
+  transform: translateY(-2px);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.ak-btn:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(43, 30, 61, 0.22);
 }
 
 .ak-btn:disabled {
@@ -115,7 +124,7 @@ body {
 .ak-btn--primary {
   background: var(--ak-accent);
   border-color: var(--ak-accent);
-  color: #04121b;
+  color: #2b1e3d;
 }
 
 .ak-btn--ghost {
@@ -209,8 +218,9 @@ body {
   gap: 0.5rem;
   align-items: center;
   padding: 0.5rem 0.6rem;
-  background: #141b28;
-  border-radius: 8px;
+  background: #ffffff;
+  border: 2px solid #2b1e3d;
+  border-radius: 14px;
   font-size: clamp(0.78rem, 3vw, 0.9rem);
 }
 
@@ -249,8 +259,8 @@ body {
 }
 
 .ak-title {
-  font-weight: 700;
-  font-size: clamp(0.95rem, 3.5vw, 1.15rem);
+  font-weight: 900;
+  font-size: clamp(1.1rem, 3.5vw, 1.55rem);
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
@@ -277,23 +287,62 @@ body {
   border-radius: 999px;
   font-size: 0.8rem;
   font-weight: 700;
-  border: 1px solid var(--ak-line);
+  border: 3px solid var(--ak-line);
+  box-shadow: 0 4px 0 rgba(43, 30, 61, 0.2);
+  transition: transform 160ms ease;
 }
 
 .ak-chip--black {
-  background: #12151d;
-  color: #cfd6e6;
+  background: #382c49;
+  color: #ffffff;
 }
 
 .ak-chip--white {
-  background: #eef1f7;
-  color: #1b1b1f;
+  background: #fff2d4;
+  color: #2b1e3d;
+}
+
+.ak-chip.is-turn {
+  transform: translateY(-3px) scale(1.04);
+  outline: 3px solid #ff3d8a;
+  outline-offset: 2px;
+  animation: ak-turn-chip 1.15s ease-in-out infinite;
+}
+
+.ak-stone-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 3px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  vertical-align: -2px;
+}
+
+.ak-chip--white .ak-stone-dot {
+  background: white;
+  border-color: #2b1e3d;
+}
+
+.ak-chip--black .ak-stone-dot {
+  background: #171020;
+  border-color: white;
+}
+
+.ak-audio {
+  min-height: 38px !important;
 }
 
 .ak-status {
   color: var(--ak-muted);
   font-size: clamp(0.78rem, 3vw, 0.9rem);
-  min-width: 0;
+  min-width: min(100%, 18rem);
+  padding: 8px 12px;
+  border: 2px solid #2b1e3d;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #2b1e3d;
+  font-weight: 800;
 }
 
 .ak-actions {
@@ -317,12 +366,244 @@ body {
   max-width: min(90%, 28rem);
   padding: 0.5rem 0.9rem;
   border-radius: 999px;
-  background: rgba(10, 14, 22, 0.9);
-  border: 1px solid var(--ak-line);
-  color: var(--ak-text);
+  background: #2b1e3d;
+  border: 3px solid #ffffff;
+  color: #ffffff;
   font-size: clamp(0.75rem, 3vw, 0.85rem);
   text-align: center;
   pointer-events: none;
+}
+
+.ak-arena-shell {
+  --ak-burst: 680ms;
+  --ak-impact: 420ms;
+  --ak-celebrate: 1100ms;
+  --ak-spring: cubic-bezier(0.16, 1.35, 0.4, 1);
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: clamp(18px, 4vw, 34px);
+  transition: filter 180ms var(--gj-ease);
+}
+
+.ak-arena-shell::before,
+.ak-arena-shell::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  inset: 8px;
+  border: 7px solid color-mix(in srgb, #ffb020 58%, transparent);
+  border-radius: clamp(14px, 3.5vw, 30px);
+  box-shadow: inset 0 0 28px color-mix(in srgb, #ffb020 54%, transparent), 0 0 26px color-mix(in srgb, #ffb020 36%, transparent);
+  pointer-events: none;
+  opacity: 0.58;
+  animation: ak-arena-pulse 1.6s ease-in-out infinite;
+}
+
+.ak-arena-shell::after {
+  inset: 15px;
+  border-width: 3px;
+  border-style: dashed;
+  opacity: 0.34;
+  animation-delay: -0.8s;
+}
+
+.ak-arena-shell--white::before,
+.ak-arena-shell--white::after {
+  border-color: color-mix(in srgb, #8fddf7 76%, white);
+  box-shadow: inset 0 0 28px color-mix(in srgb, #8fddf7 64%, transparent), 0 0 26px color-mix(in srgb, #2477c7 32%, transparent);
+}
+
+.ak-arena-shell.is-settling {
+  animation: ak-arena-rumble 360ms linear both;
+}
+
+.ak-canvas {
+  position: relative;
+  z-index: 1;
+}
+
+.ak-effects {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.ak-impact-flash {
+  position: absolute;
+  inset: 50%;
+  display: none;
+  place-items: center;
+  width: 0;
+  height: 0;
+}
+
+.ak-impact-flash.is-active {
+  display: grid;
+}
+
+.ak-impact-flash::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: white;
+  animation: ak-screen-flash var(--ak-impact) ease-out both;
+}
+
+.ak-impact-flash__ring {
+  position: absolute;
+  width: min(30vmin, 190px);
+  aspect-ratio: 1;
+  border: 12px double #ffc93c;
+  border-radius: 50%;
+  box-shadow: 0 0 0 8px color-mix(in srgb, #ff3d8a 70%, transparent), 0 0 44px #ffffff;
+  animation: ak-impact-ring var(--ak-impact) var(--ak-spring) both;
+}
+
+.ak-impact-flash__particle {
+  --ak-px: 0px;
+  --ak-py: -150px;
+  position: absolute;
+  width: 18px;
+  height: 38px;
+  border: 3px solid #2b1e3d;
+  border-radius: 999px;
+  background: #ffc93c;
+  animation: ak-impact-particle var(--ak-burst) var(--ak-spring) both;
+}
+
+.ak-impact-flash__particle:nth-child(3n) { background: #ff3d8a; }
+.ak-impact-flash__particle:nth-child(3n + 1) { background: #8fddf7; }
+.ak-impact-flash__particle:nth-child(3) { --ak-px: 78px; --ak-py: -126px; }
+.ak-impact-flash__particle:nth-child(4) { --ak-px: 132px; --ak-py: -74px; }
+.ak-impact-flash__particle:nth-child(5) { --ak-px: 150px; --ak-py: 0px; }
+.ak-impact-flash__particle:nth-child(6) { --ak-px: 126px; --ak-py: 78px; }
+.ak-impact-flash__particle:nth-child(7) { --ak-px: 74px; --ak-py: 132px; }
+.ak-impact-flash__particle:nth-child(8) { --ak-px: 0px; --ak-py: 150px; }
+.ak-impact-flash__particle:nth-child(9) { --ak-px: -78px; --ak-py: 126px; }
+.ak-impact-flash__particle:nth-child(10) { --ak-px: -132px; --ak-py: 74px; }
+.ak-impact-flash__particle:nth-child(11) { --ak-px: -150px; --ak-py: 0px; }
+.ak-impact-flash__particle:nth-child(12) { --ak-px: -126px; --ak-py: -78px; }
+.ak-impact-flash__particle:nth-child(13) { --ak-px: -74px; --ak-py: -132px; }
+
+.ak-splash {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(92%, 520px);
+  color: #ffffff;
+  text-align: center;
+  text-shadow: 0 5px 0 #2b1e3d, 0 0 22px #ff3d8a;
+  animation: ak-splash 900ms var(--ak-spring) both;
+}
+
+.ak-splash__eyebrow {
+  padding: 6px 13px;
+  border: 3px solid #2b1e3d;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #2b1e3d;
+  box-shadow: 0 5px 0 rgba(43, 30, 61, 0.28);
+  font-size: clamp(11px, 2.4vw, 15px);
+  font-weight: 900;
+  text-shadow: none;
+}
+
+.ak-splash strong {
+  display: block;
+  margin-top: 8px;
+  font-size: clamp(38px, 11vw, 92px);
+  font-weight: 1000;
+  letter-spacing: -0.08em;
+  line-height: 0.95;
+}
+
+.ak-splash--ringout strong { color: #ffc93c; }
+.ak-splash--grow strong { color: #b6efa0; }
+.ak-splash--anchor strong { color: #8fddf7; }
+.ak-splash--launch strong { color: #ffffff; }
+.ak-splash--turn strong { color: #ff3d8a; }
+
+.ak-speed-lines {
+  position: absolute;
+  inset: 0;
+  opacity: 0.74;
+  overflow: hidden;
+}
+
+.ak-speed-lines span {
+  --ak-angle: 0deg;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 68%;
+  height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #ffffff 68%, transparent);
+  transform-origin: left center;
+  animation: ak-speed-line 460ms ease-out infinite;
+}
+
+.ak-speed-lines span:nth-child(2) { --ak-angle: 55deg; animation-delay: -80ms; }
+.ak-speed-lines span:nth-child(3) { --ak-angle: 115deg; animation-delay: -160ms; }
+.ak-speed-lines span:nth-child(4) { --ak-angle: 180deg; animation-delay: -240ms; }
+.ak-speed-lines span:nth-child(5) { --ak-angle: 235deg; animation-delay: -320ms; }
+.ak-speed-lines span:nth-child(6) { --ak-angle: 300deg; animation-delay: -400ms; }
+
+@keyframes ak-turn-chip {
+  50% { filter: brightness(1.16) saturate(1.25); transform: translateY(-5px) scale(1.08); }
+}
+
+@keyframes ak-arena-pulse {
+  50% { opacity: 0.88; filter: brightness(1.18); transform: scale(0.992); }
+}
+
+@keyframes ak-arena-rumble {
+  18% { transform: translate3d(-4px, 2px, 0) rotate(-0.25deg); }
+  38% { transform: translate3d(5px, -2px, 0) rotate(0.3deg); }
+  62% { transform: translate3d(-3px, -1px, 0); }
+  82% { transform: translate3d(2px, 1px, 0); }
+}
+
+@keyframes ak-screen-flash {
+  0% { opacity: 0.62; }
+  100% { opacity: 0; }
+}
+
+@keyframes ak-impact-ring {
+  0% { opacity: 1; filter: blur(4px); transform: scale(0.12) rotate(-18deg); }
+  75% { opacity: 0.9; filter: blur(0); transform: scale(1.18) rotate(8deg); }
+  100% { opacity: 0; transform: scale(1.5) rotate(18deg); }
+}
+
+@keyframes ak-impact-particle {
+  0% { opacity: 1; transform: translate(0, 0) scale(0.2) rotate(0); }
+  76% { opacity: 1; transform: translate(var(--ak-px), var(--ak-py)) scale(1) rotate(220deg); }
+  100% { opacity: 0; transform: translate(var(--ak-px), var(--ak-py)) scale(0.4) rotate(320deg); }
+}
+
+@keyframes ak-splash {
+  0% { opacity: 0; filter: blur(6px); transform: translate(-50%, -20%) scale(0.55) rotate(-4deg); }
+  42% { opacity: 1; filter: blur(0); transform: translate(-50%, -50%) scale(1.08) rotate(1deg); }
+  72% { opacity: 1; transform: translate(-50%, -54%) scale(1); }
+  100% { opacity: 0; filter: blur(3px); transform: translate(-50%, -70%) scale(1.12); }
+}
+
+@keyframes ak-speed-line {
+  0% { opacity: 0; filter: blur(3px); transform: rotate(var(--ak-angle)) scaleX(0.08); }
+  35% { opacity: 1; }
+  100% { opacity: 0; filter: blur(0); transform: rotate(var(--ak-angle)) scaleX(1.2); }
 }
 
 /* 세로가 짧은 가로 화면(폰을 눕힌 경우)에서는 머리말·꼬리말을 눌러 판을 살린다. */
@@ -335,5 +616,30 @@ body {
   .ak-btn--sm {
     min-height: 32px;
     padding: 0.35rem 0.6rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ak-chip.is-turn,
+  .ak-arena-shell,
+  .ak-arena-shell::before,
+  .ak-arena-shell::after,
+  .ak-impact-flash::before,
+  .ak-impact-flash__ring,
+  .ak-impact-flash__particle,
+  .ak-splash,
+  .ak-speed-lines span {
+    animation: none;
+  }
+
+  .ak-impact-flash__particle,
+  .ak-speed-lines {
+    display: none;
+  }
+
+  .ak-splash {
+    opacity: 1;
+    filter: none;
+    transform: translate(-50%, -50%);
   }
 }
