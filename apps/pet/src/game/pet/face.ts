@@ -26,17 +26,24 @@ export interface FaceInput {
   eating: boolean
   /** 지금이 깜빡이는 순간인가. isBlinking() 이 정한다. */
   blinking: boolean
+  /** 자는 중. 눈을 감고 있어야 한다. */
+  asleep: boolean
 }
 
 /**
- * 우선순위: 먹는 중 > 시무룩 > 깜빡임 > 기본.
+ * 우선순위: 자는 중 > 먹는 중 > 시무룩 > 깜빡임 > 기본.
+ *
+ * **자는 것이 가장 앞선다.** 재웠는데 눈을 뜨고 있으면 "불을 껐어요. 잘 자!"가
+ * 거짓말이 된다. 감은 눈 스프라이트가 따로 없어 깜빡임용(`blink`)을 그대로
+ * 쓴다 — 눈을 감은 그림이라는 점에서 같다.
  *
  * 시무룩이 깜빡임보다 앞서는 이유는 **`sad-blink` 스프라이트가 없기 때문이다.**
  * 깜빡임을 먼저 보면 시무룩한 펫이 깜빡일 때마다 멀쩡한 얼굴로 돌아온다.
- * 먹는 것이 가장 앞선 것은 그 순간이 사용자가 방금 한 행동에 대한 답이라서다 —
+ * 먹는 것이 그다음인 것은 그 순간이 사용자가 방금 한 행동에 대한 답이라서다 —
  * 반응이 다른 표정에 가려지면 눌러도 아무 일 없는 것처럼 느껴진다.
  */
 export function pickFace(input: FaceInput): FaceKind {
+  if (input.asleep) return 'blink'
   if (input.eating) return 'open'
   if (input.moodZero) return 'sad'
   if (input.blinking) return 'blink'

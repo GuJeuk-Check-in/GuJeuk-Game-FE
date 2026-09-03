@@ -21,10 +21,20 @@ describe('petSpriteName', () => {
 })
 
 describe('pickFace', () => {
-  const base = { moodZero: false, eating: false, blinking: false }
+  const base = { moodZero: false, eating: false, blinking: false, asleep: false }
 
   it('아무 일도 없으면 기본 얼굴이다', () => {
     expect(pickFace(base)).toBe('base')
+  })
+
+  it('자는 중이면 눈을 감는다', () => {
+    // 감은 눈 스프라이트가 따로 없어 깜빡임용을 그대로 쓴다.
+    expect(pickFace({ ...base, asleep: true })).toBe('blink')
+  })
+
+  it('자는 것이 다른 어떤 표정보다 앞선다', () => {
+    // 재웠는데 눈을 뜨고 있으면 "불을 껐어요"가 거짓말이 된다.
+    expect(pickFace({ moodZero: true, eating: true, blinking: false, asleep: true })).toBe('blink')
   })
 
   it('먹는 중이면 입을 벌린다', () => {
@@ -46,7 +56,7 @@ describe('pickFace', () => {
   })
 
   it('먹는 것이 다른 모든 표정을 이긴다', () => {
-    expect(pickFace({ moodZero: true, eating: true, blinking: true })).toBe('open')
+    expect(pickFace({ moodZero: true, eating: true, blinking: true, asleep: false })).toBe('open')
   })
 })
 

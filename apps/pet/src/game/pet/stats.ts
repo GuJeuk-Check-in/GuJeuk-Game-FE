@@ -86,7 +86,7 @@ export function applyElapsed(save: PetSave, now: number): { next: PetSave; repor
   const today = localDateKey(now)
   const rolled = save.daily.date !== today
   const rolledDaily: DailyState = rolled
-    ? { date: today, coinsEarned: 0, checkedIn: false, pets: 0 }
+    ? { date: today, coinsEarned: 0, expEarned: 0, checkedIn: false, pets: 0 }
     : save.daily
 
   // 지급 여부는 날짜가 아니라 checkedIn 으로 판단한다. 같은 날 여러 번 열어도

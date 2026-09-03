@@ -21,7 +21,7 @@ function makeSave(overrides: Partial<PetSave> = {}): PetSave {
     tutorial: { step: 0, done: false },
     // 기본값은 "오늘 이미 출석했다" 다. 스탯만 보는 테스트가 코인 지급에 흔들리지
     // 않게 하려는 것이다.
-    daily: { date: localDateKey(T0), coinsEarned: 0, checkedIn: true, pets: 0 },
+    daily: { date: localDateKey(T0), coinsEarned: 0, expEarned: 0, checkedIn: true, pets: 0 },
     lastSeenAt: T0,
     ...overrides,
   }
@@ -165,13 +165,14 @@ describe('shouldShowWelcomeBack', () => {
 describe('applyElapsed — 날짜 넘김', () => {
   it('날짜가 바뀌면 daily 를 초기화하고 첫 접속 코인을 준다', () => {
     const save = makeSave({
-      daily: { date: '2026-01-14', coinsEarned: 200, checkedIn: true, pets: 3 },
+      daily: { date: '2026-01-14', coinsEarned: 200, expEarned: 0, checkedIn: true, pets: 3 },
     })
     const { next } = applyElapsed(save, T0)
 
     expect(next.daily).toEqual({
       date: localDateKey(T0),
       coinsEarned: 0,
+      expEarned: 0,
       checkedIn: true,
       pets: 0,
     })
@@ -180,7 +181,7 @@ describe('applyElapsed — 날짜 넘김', () => {
 
   it('같은 날 두 번 호출해도 코인은 한 번만 준다', () => {
     const save = makeSave({
-      daily: { date: '2026-01-14', coinsEarned: 200, checkedIn: true, pets: 3 },
+      daily: { date: '2026-01-14', coinsEarned: 200, expEarned: 0, checkedIn: true, pets: 3 },
     })
     const first = applyElapsed(save, T0).next
     const second = applyElapsed(first, T0 + 60_000).next
@@ -193,7 +194,7 @@ describe('applyElapsed — 불변성', () => {
   it('입력 세이브를 변형하지 않는다', () => {
     const save = makeSave({
       sleep: { since: T0 - 7 * HOUR_MS },
-      daily: { date: '2026-01-14', coinsEarned: 200, checkedIn: true, pets: 3 },
+      daily: { date: '2026-01-14', coinsEarned: 200, expEarned: 0, checkedIn: true, pets: 3 },
     })
     const before = structuredClone(save)
 

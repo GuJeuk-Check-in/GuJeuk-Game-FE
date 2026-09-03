@@ -1,6 +1,8 @@
 import { GameLoop } from '@gujuck/game-core'
 import type { CanvasStage } from '@gujuck/game-core'
-import { PALETTE_DARKEST, PALETTE_LIGHTEST } from './palette'
+import { PALETTE_DARKEST } from './palette'
+import * as effects from './effects'
+import type { Particle, ParticleKind } from './effects'
 import { DEFAULT_ROOM, ROOMS, roomIndex } from './rooms'
 import type { RoomDef } from './rooms'
 import { PET_METRICS, furnitureSpriteName, loadSprites } from './sprites'
@@ -11,7 +13,7 @@ import type { SpriteSet } from './sprites'
 import { DECOR_AREA, FURNITURE_SIZE } from './pet/decor'
 // 어느 레벨이 어느 단계인지도 같은 이유로 규칙 모듈에서 가져온다. 여기서 레벨을
 // 다시 비교하면 명세 §6 의 표가 두 벌이 되고, 문턱을 옮길 때 한쪽만 바뀐다.
-import { stageForLevel } from './pet/economy'
+import { petPixelSize, stageForLevel } from './pet/economy'
 // 표정 선택 규칙도 마찬가지다. "언제 슬픈 얼굴인가"를 렌더러가 다시 판단하면
 // 미니게임이 생겼을 때 같은 판단이 또 한 벌 생긴다(face.ts 첫머리).
 import { isBlinking, pickFace } from './pet/face'
@@ -84,16 +86,34 @@ const MOUTH_OPEN_SEC = BOUNCE_SEC / BOUNCE_HOPS
  * 팔레트에서 가져온다. 여기에 색을 직접 적으면 팔레트가 두 벌로 갈리고,
  * 나중에 팔레트를 바꿀 때 이 한 곳만 예전 색으로 남는다.
  */
-const LETTERBOX_CSS = `#${PALETTE_DARKEST}`
-const ERROR_TEXT_CSS = `#${PALETTE_LIGHTEST}`
+// 캔버스 바깥 여백. 예전에는 팔레트에서 가장 어두운 색이라 화면 테두리가
+// 검정 액자처럼 보였다. 앱 바닥(--pt-bg)과 같은 색으로 맞춰 이어 붙인다.
+/** 펫을 누를 때 허용하는 여유(논리 px). 손가락이 그림보다 굵다. */
+const PET_TAP_PADDING = 10
+
+/** 자는 동안 방을 덮는 색과 진하기. 방 색을 살린 채 어두워지는 정도로 잡았다. */
+/**
+ * 세로를 잘라도 되는 한도. 1.12 면 방 높이의 약 11% 까지 위에서 잘린다.
+ *
+ * 처음에 1.25(20%)로 잡았더니 거실 창문 윗부분이 잘려 나갔다. 방 그림에서
+ * 가구가 시작되는 높이가 대략 논리 y=110 이라, 그보다 덜 자르는 값이어야 한다.
+ */
+const MAX_CROP_FACTOR = 1.12
+
+const SLEEP_DIM_CSS = '#28282e'
+const SLEEP_DIM_ALPHA = 0.45
+
+const LETTERBOX_CSS = '#ffe6c6'
+// 레터박스 위에 그린다. 바닥이 밝아졌으므로 글자는 어두워야 읽힌다.
+const ERROR_TEXT_CSS = `#${PALETTE_DARKEST}`
 
 /**
- * 배치 모드의 점선이 쓰는 밝은 색.
+ * 배치 모드의 점선 색.
  *
  * 값은 ERROR_TEXT_CSS 와 같지만 이름을 따로 둔다. 뜻이 다른 두 쓰임이 한 이름을
  * 나눠 쓰면, 나중에 오류 문구 색만 바꾸려는 사람이 가구 배치 테두리까지 바꾼다.
  */
-const HIGHLIGHT_CSS = `#${PALETTE_LIGHTEST}`
+const HIGHLIGHT_CSS = `#${PALETTE_DARKEST}`
 
 /**
  * 가구를 놓을 수 있는 방.
@@ -212,6 +232,14 @@ export class PetGame {
   private mouthSec: number | null = null
 
   /**
+   * 떠 있는 이펙트(거품·하트·부스러기…).
+   *
+   * 배열을 통째로 갈아 끼운다. 제자리에서 지우면 그리는 도중 배열이 줄어
+   * 같은 프레임에 어떤 것은 그려지고 어떤 것은 빠진다(effects.step 주석).
+   */
+  private particles: readonly Particle[] = []
+
+  /**
    * 지금 그릴 성장 단계. **레벨을 여기 두지 않는다** — 단계를 고르는 규칙은
    * economy.ts 의 stageForLevel 뿐이고, 그 결과만 들고 있으면 된다.
    *
@@ -221,8 +249,24 @@ export class PetGame {
    */
   private petStage: Stage = 'baby'
 
+  /**
+   * 지금 레벨에서 펫을 몇 픽셀로 그릴지(economy.ts 의 petPixelSize).
+   *
+   * 예전에는 단계 크기를 그대로 썼는데, 그러면 같은 단계 안에서 레벨이 올라도
+   * 그림이 1px 도 바뀌지 않는다. 레벨업의 유일한 눈에 보이는 결과가 숫자뿐이었다.
+   */
+  private petSize: number = petPixelSize(1)
+
   /** 기분이 0 인가(§4). 시무룩한 얼굴의 조건이고, 판단은 face.ts 가 한다. */
   private moodZero = false
+
+  /**
+   * 자는 중인가. 얼굴(눈 감김)과 방 어둡기를 함께 정한다.
+   *
+   * 둘을 한 값에서 뽑는 것은 어긋날 수 없게 하려는 것이다 — 불은 꺼졌는데
+   * 눈은 떠 있는 조합이 화면에 나오면 어느 쪽이 맞는지 알 수 없다.
+   */
+  private asleep = false
 
   /**
    * 거실에 놓인 가구. **세이브를 직접 읽지 않는다** — 밖에서 setDecor 로 넣어
@@ -271,6 +315,7 @@ export class PetGame {
     this.slide = null
     this.bounceSec = null
     this.mouthSec = null
+    this.particles = []
     this.edit = null
     this.loop.destroy()
   }
@@ -348,6 +393,45 @@ export class PetGame {
   }
 
   /**
+   * 펫 주변에서 이펙트를 터뜨린다.
+   *
+   * 자리를 펫에서 뽑는 것은 부르는 쪽이 좌표를 몰라도 되게 하려는 것이다 —
+   * 펫 크기는 레벨에 따라 변하므로(petPixelSize) 밖에서 계산하면 어긋난다.
+   */
+  burst(kind: ParticleKind, count: number): void {
+    if (this.disposed) return
+
+    const rect = this.petRect()
+    const cx = rect.x + rect.size / 2
+    const cy = rect.y + rect.size / 2
+    const spread = rect.size * 0.4
+
+    const born: Particle[] = []
+    for (let i = 0; i < count; i += 1) {
+      born.push(
+        effects.spawn(
+          kind,
+          cx + (Math.random() - 0.5) * spread * 2,
+          cy + (Math.random() - 0.5) * spread,
+        ),
+      )
+    }
+
+    this.particles = effects.trim([...this.particles, ...born])
+  }
+
+  /**
+   * 손끝에서 하나 뿜는다. 문지르는 동안 거품이 따라오게 하려는 것이다.
+   *
+   * burst 와 나눈 것은 자리의 출처가 다르기 때문이다 — 이쪽은 펫이 아니라
+   * 지금 손가락이 있는 논리 좌표다.
+   */
+  emitAt(kind: ParticleKind, x: number, y: number): void {
+    if (this.disposed) return
+    this.particles = effects.trim([...this.particles, effects.spawn(kind, x, y)])
+  }
+
+  /**
    * 세이브에서 화면에 필요한 두 가지를 받는다.
    *
    * **이 클래스는 세이브를 모른다**(클래스 첫머리의 계약). 그래서 레벨과 기분을
@@ -355,10 +439,12 @@ export class PetGame {
    * 커밋에서 함께 바뀌는 값이기 때문이다 — 미니게임 정산 한 번에 레벨이 오르고
    * 기분이 깎이는데, 두 함수로 나누면 그사이 한 프레임이 어긋난 조합으로 그려진다.
    */
-  setPet(input: { level: number; moodZero: boolean }): void {
+  setPet(input: { level: number; moodZero: boolean; asleep: boolean }): void {
     if (this.disposed) return
     this.petStage = stageForLevel(input.level)
+    this.petSize = petPixelSize(input.level)
     this.moodZero = input.moodZero
+    this.asleep = input.asleep
   }
 
   /** 방에 놓인 가구를 통째로 갈아 끼운다. 세이브의 room.placed 를 그대로 넘긴다. */
@@ -403,6 +489,47 @@ export class PetGame {
    * 눈에 보이는 쪽이 집혀야 한다. 앞에서부터 찾으면 겹친 자리에서 밑에 깔린
    * 가구가 집혀 "다른 게 움직인다".
    */
+  /**
+   * 지금 화면에서 펫이 차지하는 사각형(논리 좌표).
+   *
+   * 그리는 쪽과 같은 식으로 계산한다 — 여기서 따로 세면 크기가 레벨에 따라
+   * 변한 뒤로 손끝과 그림이 어긋난다. 전환 중에는 쓰지 않으므로 슬라이드
+   * 오프셋(roomX)은 넣지 않는다.
+   */
+  petRect(): { x: number; y: number; size: number } {
+    const metrics = PET_METRICS[this.petStage]
+    const grow = this.petSize / metrics.size
+
+    return {
+      x: this.room.anchor.x - Math.round(metrics.centerX * grow),
+      y: this.room.anchor.y - Math.round(metrics.feetY * grow) - this.petLift(),
+      size: this.petSize,
+    }
+  }
+
+  /**
+   * 그 논리 좌표가 펫 위인가.
+   *
+   * 여유를 두는 것은 손가락이 그림보다 굵기 때문이다. 정확히 외곽선 안쪽만
+   * 받으면 "눌렀는데 아무 일도 안 일어난다"가 자주 나온다.
+   */
+  petHitTest(x: number, y: number): boolean {
+    const rect = this.petRect()
+    const pad = PET_TAP_PADDING
+
+    return (
+      x >= rect.x - pad &&
+      x < rect.x + rect.size + pad &&
+      y >= rect.y - pad &&
+      y < rect.y + rect.size + pad
+    )
+  }
+
+  /** 전환 중에는 조작을 받지 않는다. 어느 방을 만지는지 알 수 없다. */
+  isSliding(): boolean {
+    return this.slide !== null
+  }
+
   hitTest(x: number, y: number): number | null {
     for (let index = this.placed.length - 1; index >= 0; index -= 1) {
       const spot = this.placed[index]
@@ -426,6 +553,8 @@ export class PetGame {
       if (this.bounceSec >= BOUNCE_SEC) this.bounceSec = null
     }
 
+    this.particles = effects.step(this.particles, dtSec)
+
     if (this.mouthSec !== null) {
       this.mouthSec += dtSec
       if (this.mouthSec >= MOUTH_OPEN_SEC) this.mouthSec = null
@@ -435,27 +564,43 @@ export class PetGame {
   /**
    * 화면 확대 배율과 레터박스 여백.
    *
-   * **CSS 픽셀이 아니라 장치 픽셀을 기준으로 정수배를 잡는다.** CanvasStage 는
-   * ctx 에 setTransform(dpr) 을 걸어 두므로 보통은 CSS 픽셀만 쓰면 되지만,
-   * dpr 이 1.25 · 1.5 인 기기(윈도우 배율 조정)에서는 CSS 픽셀의 정수 좌표가
-   * 장치 픽셀의 정수 좌표가 아니다. 그러면 도트 격자가 장치 픽셀에 어긋나
-   * 어떤 줄은 두 배로, 어떤 줄은 한 배로 그려진다. 장치 픽셀로 배율을 잡으면
-   * 그런 일이 없고, 덤으로 dpr 2 기기에서는 0.5 CSS 픽셀 단위의 더 촘촘한
-   * 배율 단계를 쓸 수 있다.
+   * **정수배를 버리고 남는 자리를 다 쓴다.**
+   *
+   * 예전에는 장치 픽셀 기준으로 정수배만 썼다. 도트 격자가 장치 픽셀에 딱
+   * 떨어져 가장 깨끗하지만, 배율이 2 에서 3 으로 한 번에 뛰므로 그 사이의
+   * 자리는 전부 letterbox 로 버려진다. 실제로 어느 기기에서 보든 방은 늘
+   * 360×640 CSS 크기였고, 큰 화면일수록 가운데 작게 떠 있었다.
+   *
+   * 지금은 들어갈 수 있는 만큼 키운다. imageSmoothingEnabled=false 라 확대는
+   * 최근접이고, 소수 배율에서는 **어떤 픽셀 줄이 이웃보다 한 픽셀 넓게** 그려진다.
+   * 흐려지지는 않는다. 이 게임의 그림은 굵은 외곽선에 넓은 면이라 그 차이가
+   * 거의 드러나지 않고, "작게 떠 있는 화면"이 주는 손해가 훨씬 크다.
+   *
+   * 여백은 정수로 유지한다. 시작점까지 소수가 되면 방마다 격자가 다르게 어긋난다.
    */
   private viewport(): Viewport {
     const { canvas } = this.stage
-    const raw = Math.min(canvas.width / LOGICAL_WIDTH, canvas.height / LOGICAL_HEIGHT)
+    const fitWidth = canvas.width / LOGICAL_WIDTH
+    const fitHeight = canvas.height / LOGICAL_HEIGHT
 
-    // 화면이 논리 해상도보다 작으면 배율이 0 이 되어 아무것도 안 보인다.
-    // 1.5배 같은 소수 배율은 도트를 뭉개므로, 그 경우에는 ×1 로 그리고 넘치는
-    // 만큼 잘리게 둔다. 뭉갠 화면보다 잘린 화면이 낫다.
-    const scale = Math.max(1, Math.floor(raw))
+    // 세로에 맞추면(min) 화면이 9:16 보다 넓을 때 좌우가 남는다. 가로를 채우고
+    // 넘치는 세로는 **위에서만** 잘라낸다 — 방 그림은 위쪽 40% 가 빈 벽이라
+    // 잘려도 잃는 것이 없고, 바닥과 펫은 아래에 있어 반드시 남아야 한다.
+    //
+    // 자르는 양에는 상한을 둔다. 가로로 아주 긴 창에서는 fitWidth 가 끝없이
+    // 커져 방이 통째로 잘려 나간다. 상한에 걸리면 다시 좌우가 남지만, 그때는
+    // 남는 편이 맞다.
+    const capped = Math.min(fitWidth, fitHeight * MAX_CROP_FACTOR)
+
+    // 화면이 논리 해상도보다 작아도 최소 ×1 은 지킨다. 0 이면 아무것도 안 보인다.
+    const scale = Math.max(1, capped, fitHeight)
 
     return {
       scale,
       offsetX: Math.floor((canvas.width - LOGICAL_WIDTH * scale) / 2),
-      offsetY: Math.floor((canvas.height - LOGICAL_HEIGHT * scale) / 2),
+      // 세로는 가운데가 아니라 **아래에 붙인다.** 가운데로 두면 위아래가 똑같이
+      // 잘려 바닥과 펫의 발이 화면 밖으로 나간다.
+      offsetY: Math.floor(Math.min(0, canvas.height - LOGICAL_HEIGHT * scale)),
     }
   }
 
@@ -514,6 +659,7 @@ export class PetGame {
     const face = pickFace({
       moodZero: this.moodZero,
       eating: this.mouthSec !== null,
+      asleep: this.asleep,
       // 벽시계가 아니라 누적 갱신 시간을 넘긴다. 탭이 숨은 동안 깜빡임이 진행되면
       // 돌아왔을 때 눈을 감은 채로 나타난다.
       blinking: isBlinking(this.elapsedSec),
@@ -523,11 +669,34 @@ export class PetGame {
     // 그대로 쓰면 아기가 바닥에 파묻히고 가로로도 밀린다(PET_METRICS 주석).
     const metrics = PET_METRICS[this.petStage]
 
+    // 레벨에 따라 그림을 조금씩 키운다. 기준점(중심·발끝)도 같은 비로 옮겨야
+    // 펫이 바닥을 뚫거나 떠 있지 않는다. imageSmoothingEnabled=false 라 최근접
+    // 확대가 걸리므로 좌표와 크기는 전부 정수로 넘긴다(§12.3).
+    const grow = this.petSize / metrics.size
+
     ctx.drawImage(
       sprites.pets[this.petStage][face],
-      roomX + this.room.anchor.x - metrics.centerX,
-      this.room.anchor.y - metrics.feetY - this.petLift(),
+      roomX + this.room.anchor.x - Math.round(metrics.centerX * grow),
+      this.room.anchor.y - Math.round(metrics.feetY * grow) - this.petLift(),
+      this.petSize,
+      this.petSize,
     )
+
+    // 불을 끈다. 방과 펫 위에, 이펙트 아래에 깐다 — zZ 는 어둠 속에서도
+    // 보여야 무엇이 일어나는지 읽힌다.
+    //
+    // 검정이 아니라 팔레트의 어두운 보라를 쓰는 것은, 순수 검정을 덮으면 방
+    // 색이 회색으로 죽어 "밤"이 아니라 "화면이 꺼진 것"으로 보이기 때문이다.
+    if (this.asleep) {
+      ctx.save()
+      ctx.globalAlpha = SLEEP_DIM_ALPHA
+      ctx.fillStyle = SLEEP_DIM_CSS
+      ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT)
+      ctx.restore()
+    }
+
+    // 이펙트는 그 위에 얹는다. 밑에 두면 거품이 펫에 가려 보이지 않는다.
+    effects.draw(ctx, this.particles, roomX)
   }
 
   /**

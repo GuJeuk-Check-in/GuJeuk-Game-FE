@@ -19,7 +19,7 @@ function makeSave(overrides: Partial<PetSave> = {}): PetSave {
     room: { wallpaper: 'default', floor: 'default', placed: [] },
     sleep: null,
     tutorial: { step: 2, done: false },
-    daily: { date: localDateKey(T0), coinsEarned: 0, checkedIn: true, pets: 0 },
+    daily: { date: localDateKey(T0), coinsEarned: 0, expEarned: 0, checkedIn: true, pets: 0 },
     lastSeenAt: T0,
     ...overrides,
   }
