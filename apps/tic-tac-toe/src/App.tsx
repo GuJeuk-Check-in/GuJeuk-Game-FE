@@ -16,7 +16,9 @@ import './App.css'
  */
 export default function App() {
   const match = useMatch()
-  const [local, setLocal] = useState(false)
+  const [local, setLocal] = useState(
+    () => import.meta.env.DEV && new URLSearchParams(window.location.search).has('local'),
+  )
 
   if (local) {
     return <LocalBoardScreen onExit={() => setLocal(false)} />

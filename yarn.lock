@@ -1513,6 +1513,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@gujuck/tic-tac-toe@workspace:apps/tic-tac-toe"
   dependencies:
+    "@gujuck/api": "workspace:*"
     "@gujuck/eslint-config": "workspace:*"
     "@gujuck/tsconfig": "workspace:*"
     "@gujuck/ui": "workspace:*"
@@ -1524,6 +1525,7 @@ __metadata:
     react-dom: "npm:^18.3.1"
     typescript: "npm:^5.6.3"
     vite: "npm:^5.4.11"
+    vitest: "npm:^2"
   languageName: unknown
   linkType: soft
 
