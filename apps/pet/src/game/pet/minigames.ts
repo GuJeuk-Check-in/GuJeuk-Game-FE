@@ -19,6 +19,7 @@ import type { MinigameId } from './economy'
 import {
   clampStat,
   DAILY_COIN_CAP,
+  DAILY_EXP_CAP,
   expForNextLevel,
   HUNGRY_COIN_FACTOR,
   levelUpReward,
@@ -34,7 +35,11 @@ export interface Settlement {
   coinsBeforeAdjust: number
   hungryHalved: boolean
   dailyCapped: boolean
+  /** 실제로 지급된 EXP (일일 상한 적용 후). */
   exp: number
+  /** 상한을 적용하기 전 EXP. 결과 화면이 둘을 비교해 보여준다. */
+  expBeforeCap: number
+  expCapped: boolean
   leveledUpTo: number | null
 }
 
@@ -115,7 +120,15 @@ export function settle(save: PetSave, game: MinigameId, score: number, now: numb
   //    절반과 EXP 0 을 함께 받는다. 여기서도 <= 0 으로 보는 것은 위 3) 과 같은
   //    이유다(실수라서 정확히 0 이 아닐 수 있다).
   const expZeroed = save.stats.mood <= 0 || save.stats.hunger <= 0
-  const exp = expZeroed ? 0 : Math.max(0, Math.floor(reward.exp(score)))
+  const expBeforeCap = expZeroed ? 0 : Math.max(0, Math.floor(reward.exp(score)))
+
+  // 5-1) EXP 일일 상한. 코인에는 상한이 있는데 EXP 에는 없어서, §6 이 한 달로
+  //      잡은 성장 곡선이 실제로는 훨씬 빨리 지나갔다. 코인과 같은 자리에서
+  //      같은 방식으로 자른다. 잘렸다는 사실은 결과 화면이 알린다 — 조용히
+  //      0 을 주면 버그로 오해한다(코인 상한과 같은 이유).
+  const expRemaining = Math.max(0, DAILY_EXP_CAP - save.daily.expEarned)
+  const exp = Math.min(expBeforeCap, expRemaining)
+  const expCapped = exp < expBeforeCap
 
   // 6) 레벨업. actions.ts 와 같은 규칙이다 — while 로 도는 이유는 한 판에 두 레벨
   //    이상 오를 수 있기 때문이다. if 로 한 번만 올리면 남은 EXP 가 다음 필요치를
@@ -144,9 +157,23 @@ export function settle(save: PetSave, game: MinigameId, score: number, now: numb
     stats: { ...save.stats, energy },
     wallet: { ...save.wallet, coins: save.wallet.coins + coins + levelUpCoins },
     // 상한에 더해지는 것은 미니게임으로 번 몫뿐이다. levelUpCoins 는 넣지 않는다.
-    daily: { ...save.daily, coinsEarned: save.daily.coinsEarned + coins },
+    daily: {
+      ...save.daily,
+      coinsEarned: save.daily.coinsEarned + coins,
+      expEarned: save.daily.expEarned + exp,
+    },
     lastSeenAt: now,
   }
 
-  return { next, coins, coinsBeforeAdjust, hungryHalved, dailyCapped, exp, leveledUpTo }
+  return {
+    next,
+    coins,
+    coinsBeforeAdjust,
+    hungryHalved,
+    dailyCapped,
+    exp,
+    expBeforeCap,
+    expCapped,
+    leveledUpTo,
+  }
 }

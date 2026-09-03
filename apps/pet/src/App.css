@@ -11,23 +11,45 @@
 
 .pt-root {
   /* ---- 팔레트에 뜻을 붙인다 ---- */
-  --pt-ink: var(--pt-c0); /* 28282e — 가장 어두운 색. 배경과 외곽선 */
-  --pt-panel: var(--pt-c1); /* 6c5671 — HUD·카드 바닥 */
-  --pt-dim: var(--pt-c2); /* d9c8bf */
-  --pt-text: var(--pt-c15); /* fff7e4 — 가장 밝은 색 */
+  /* 팔레트는 밝은 쪽에 치우쳐 있는데(palette.ts 주석) 껍데기가 어두운 두 색을
+     독차지하고 있었다. 그래서 파스텔 그림이 검정 액자에 든 것처럼 보였다.
+     역할을 나눠 배경·패널은 밝은 쪽으로 올리고, 어두운 두 색은 선과 글자에만
+     남긴다. **팔레트 배열(palette.ts)은 그대로다** — 에셋이 그 16색으로
+     양자화되어 있어 값을 바꾸면 전부 다시 뽑아야 한다. */
+  --pt-ink: var(--pt-c0); /* 28282e — 외곽선·글자·모달 스크림 */
+  --pt-bg: var(--pt-c11); /* ffe6c6 — 앱 바닥 */
+  --pt-panel: var(--pt-c15); /* fff7e4 — HUD·카드 바닥 */
+  /* 카드 안에 한 겹 더 들어가는 줄(결과·상점·게이지 트랙). 패널보다 살짝
+     어두워야 층이 보인다. 예전에는 여기가 ink 라 카드마다 검정 띠가 있었다. */
+  --pt-inset: var(--pt-c2); /* d9c8bf */
+  --pt-dim: var(--pt-c1); /* 6c5671 — 보조 글자. 밝은 바닥 위에서 읽히는 톤 */
+  --pt-text: var(--pt-c0); /* 28282e — 밝은 바닥 위 본문 */
   --pt-hunger: var(--pt-c13); /* ffc384 */
   --pt-mood: var(--pt-c7); /* feaae4 */
   --pt-clean: var(--pt-c5); /* accce4 */
   --pt-energy: var(--pt-c9); /* b0eb93 */
-  --pt-coin: var(--pt-c14); /* fff7a0 */
+  /* 코인 글자는 어두운 쪽을 쓴다. 바닥이 밝아지면서 예전 금색(fff7a0)은
+     크림색 위에서 대비가 2.0 밖에 안 나와 읽히지 않았다. 이 팔레트에는 밝은
+     바닥 위에서 읽히는 금색이 없어서(c12 도 2.0), 글자는 잉크로 두고 금색은
+     아래 알약 배경으로 살린다. */
+  --pt-coin: var(--pt-c0);
+  --pt-coin-fill: var(--pt-c14); /* fff7a0 — 금색 알약 바닥 */
 
   /* 공통 버튼(gj-btn)도 이 게임의 팔레트를 쓰게 덮어쓴다. 밝은 민트 위에
      어두운 글자라 대비가 선다 — styles.css 가 요구하는 조합이다. */
   --gj-accent: var(--pt-c6); /* b3e3da */
   --gj-accent-ink: var(--pt-c0);
 
+  /* 공용 버튼·입력의 기본값은 다크 테마용이다(packages/ui/src/styles.css).
+     밝은 바닥으로 바꾼 뒤로는 보조 버튼만 혼자 남색으로 남아 겉돌았다. */
+  --gj-surface-2: var(--pt-c11);
+  --gj-text: var(--pt-c0);
+  --gj-text-dim: var(--pt-c1);
+  --gj-border-strong: var(--pt-c1);
+  --gj-field: var(--pt-c15);
+
   height: 100%;
-  background: var(--pt-ink);
+  background: var(--pt-bg);
   color: var(--pt-text);
 }
 
@@ -75,7 +97,11 @@
 }
 
 /* 코인은 오른쪽 끝에 고정한다. 스탯이 늘어도 자리가 움직이지 않는다. */
+/* 금색은 글자가 아니라 바닥으로 남긴다(--pt-coin 주석). */
 .pt-hud__coins {
+  padding: 1px 7px;
+  border-radius: var(--gj-radius-pill);
+  background: var(--pt-coin-fill);
   margin-left: auto;
   color: var(--pt-coin);
   font-weight: 700;
@@ -121,25 +147,36 @@
    글자가 닉네임인 것은 이 자리가 "지금 누구인가"를 보여주는 유일한 곳이기
    때문이다. 공용 기기에서 앞사람이 나가지 않고 자리를 뜬 것을 다음 사람이
    알아채는 자리도 여기다. */
+/* 배경 없는 흐린 글자였다. 공용 기기에서 제일 자주 찾게 되는 버튼인데 제일
+   안 보였다. 알약 배경을 깔고 테두리를 줘서 "누르는 것"으로 읽히게 한다. */
 .pt-hud__leave {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  max-width: 7rem;
-  padding: 0 4px;
-  border: 0;
-  background: none;
-  color: var(--pt-text);
+  max-width: 9rem;
+  padding: 3px 8px;
+  border: 1px solid var(--pt-ink);
+  border-radius: var(--gj-radius-pill);
+  background: var(--pt-mood);
+  color: var(--pt-ink);
   font: inherit;
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
 }
 
+/* 이 글자가 버튼의 뜻이다. 좁은 화면에서도 접지 않는다 — 접어야 할 만큼
+   자리가 없으면 닉네임(pt-hud__leave-text)을 먼저 버린다. */
+.pt-hud__leave-label {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .pt-hud__leave-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  opacity: 0.75;
 }
 
 /* 아주 좁은 화면에서는 글자를 접고 아이콘만 남긴다. 이름·레벨·경험치·코인이
@@ -187,7 +224,7 @@
 .pt-stat__track {
   height: 10px;
   border-radius: var(--gj-radius-pill);
-  background: var(--pt-ink);
+  background: var(--pt-inset);
   overflow: hidden;
 }
 
@@ -292,7 +329,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 6px 10px;
-  background: var(--pt-ink);
+  background: var(--pt-inset);
   border-radius: var(--gj-radius);
   font-size: 14px;
 }
@@ -520,7 +557,7 @@
   align-items: baseline;
   gap: 2px 8px;
   padding: 8px 10px;
-  background: var(--pt-ink);
+  background: var(--pt-inset);
   border-radius: var(--gj-radius);
   font-size: 13px;
 }
@@ -707,7 +744,7 @@
   min-height: var(--gj-tap);
   padding: 0 12px;
   color: var(--pt-text);
-  background: var(--pt-ink);
+  background: var(--pt-panel);
   border: 1px solid var(--pt-panel);
   border-radius: var(--gj-radius);
 }
@@ -1091,7 +1128,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 6px 12px;
-  background: var(--pt-ink);
+  background: var(--pt-inset);
   border-radius: var(--gj-radius);
   font-size: 14px;
 }
@@ -1131,7 +1168,7 @@
 .pt-result__levelup {
   margin: 12px 0 0;
   padding: 8px;
-  background: var(--pt-ink);
+  background: var(--pt-inset);
   border-radius: var(--gj-radius);
   color: var(--pt-coin);
   font-size: 15px;
@@ -1373,7 +1410,7 @@
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
-  background: var(--pt-ink);
+  background: var(--pt-inset);
   border: 2px solid var(--pt-ink);
   border-radius: var(--gj-radius);
 }
@@ -1465,6 +1502,95 @@
   cursor: grab;
 }
 
+/* ---- 직접 조작 ---------------------------------------------------------- */
+
+/* 돌봄 조작을 받는 면. touch-action: none 이라야 문지르는 동안 페이지가 같이
+   끌려다니지 않는다. 방 이동 스와이프는 RoomNav 가 touch 이벤트로 따로 받으므로
+   이 값과 무관하게 그대로 동작한다. */
+.pt-touch__surface {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+
+/* 주방 트레이. 배치 바와 같은 이유로 한 줄이고 46px 을 넘지 않는다. */
+.pt-tray {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  height: 46px;
+  margin: 0;
+  padding: 0 2px;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pt-tray::-webkit-scrollbar {
+  display: none;
+}
+
+.pt-tray__item {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px 2px 4px;
+  border: 1px solid var(--pt-ink);
+  border-radius: var(--gj-radius-pill);
+  background: var(--pt-panel);
+  /* 끌기가 주 조작이라 브라우저의 기본 스크롤·선택을 꺼 둔다. */
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+/* 끌고 있는 동안 원래 자리는 비워 둔다. 손끝의 것과 트레이의 것이 둘 다 보이면
+   무엇을 들고 있는지 헷갈린다. */
+.pt-tray__item[data-dragging='true'] {
+  opacity: 0.3;
+}
+
+.pt-tray__icon {
+  width: 30px;
+  height: 30px;
+  image-rendering: pixelated;
+}
+
+.pt-tray__count {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pt-tray__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 46px;
+  margin: 0;
+  color: var(--pt-dim);
+  font-size: 13px;
+}
+
+/* 손끝을 따라다니는 음식. 캔버스 위로 올라가야 해서 fixed 다. */
+.pt-drag {
+  position: fixed;
+  z-index: 40;
+  width: 44px;
+  height: 44px;
+  image-rendering: pixelated;
+  transform: translate(-50%, -50%);
+  /* 이 그림이 포인터를 받으면 놓는 순간의 좌표가 자기 자신 위가 된다. */
+  pointer-events: none;
+  transition: transform var(--gj-dur-fast) ease-out;
+}
+
+/* 펫 위에 오면 커진다. 놓아도 되는 자리라는 신호가 손끝에 있어야 한다. */
+.pt-drag[data-over='true'] {
+  transform: translate(-50%, -50%) scale(1.3);
+}
+
 /*
  * 배치 바는 **한 줄이고 46px 을 넘지 않는다.**
  *
@@ -1551,7 +1677,7 @@
   width: 44px;
   height: 44px;
   padding: 0;
-  background: var(--pt-ink);
+  background: var(--pt-inset);
   border: 2px solid var(--pt-ink);
   border-radius: var(--gj-radius);
   color: var(--pt-text);

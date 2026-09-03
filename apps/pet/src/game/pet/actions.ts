@@ -62,6 +62,8 @@ export function feed(save: PetSave, food: FoodId, now: number): ActionOutcome {
       ...save.stats,
       hunger: clampStat(save.stats.hunger + spec.hunger),
       mood: clampStat(save.stats.mood + spec.mood),
+      // 대부분의 음식은 0 이다. 우유·치즈만 조금 준다(economy.ts 의 FoodSpec).
+      energy: clampStat(save.stats.energy + spec.energy),
     },
     // 0 이 되어도 키를 지우지 않는다. 남겨 두면 화면이 "사과 0개"를 그대로 그릴
     // 수 있고, 키가 사라졌다 생겼다 하는 인벤토리는 비교하기 까다롭다.

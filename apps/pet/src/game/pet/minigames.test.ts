@@ -4,6 +4,7 @@ import type { PetSave } from '../types'
 import { localDateKey } from './clock'
 import {
   DAILY_COIN_CAP,
+  DAILY_EXP_CAP,
   expForNextLevel,
   HOUR_MS,
   HUNGRY_COIN_FACTOR,
@@ -27,7 +28,7 @@ function makeSave(overrides: Partial<PetSave> = {}): PetSave {
     room: { wallpaper: 'default', floor: 'default', placed: [] },
     sleep: null,
     tutorial: { step: 0, done: false },
-    daily: { date: localDateKey(T0), coinsEarned: 0, checkedIn: true, pets: 0 },
+    daily: { date: localDateKey(T0), coinsEarned: 0, expEarned: 0, checkedIn: true, pets: 0 },
     lastSeenAt: T0,
     ...overrides,
   }
@@ -196,7 +197,13 @@ describe('settle — 스탯 0 벌칙 (§4)', () => {
 describe('settle — 일일 코인 상한 (§7)', () => {
   it('남은 한도가 10 인데 40 을 벌면 10 만 들어오고 dailyCapped 가 true 다', () => {
     const save = makeSave({
-      daily: { date: localDateKey(T0), coinsEarned: DAILY_COIN_CAP - 10, checkedIn: true, pets: 0 },
+      daily: {
+        date: localDateKey(T0),
+        coinsEarned: DAILY_COIN_CAP - 10,
+        expEarned: 0,
+        checkedIn: true,
+        pets: 0,
+      },
     })
     const result = settle(save, 'catch', 40, T0)
 
@@ -209,7 +216,7 @@ describe('settle — 일일 코인 상한 (§7)', () => {
 
   it('한도가 남아 있으면 잘리지 않고 daily.coinsEarned 가 그만큼 오른다', () => {
     const save = makeSave({
-      daily: { date: localDateKey(T0), coinsEarned: 100, checkedIn: true, pets: 0 },
+      daily: { date: localDateKey(T0), coinsEarned: 100, expEarned: 0, checkedIn: true, pets: 0 },
     })
     const result = settle(save, 'catch', 40, T0)
 
@@ -221,7 +228,13 @@ describe('settle — 일일 코인 상한 (§7)', () => {
   it('상한을 이미 채웠으면 0 코인이지만 EXP 와 에너지 차감은 그대로 일어난다', () => {
     // 조용히 0 코인을 주면 버그로 오해한다 — dailyCapped 로 이유를 알린다(§7).
     const save = makeSave({
-      daily: { date: localDateKey(T0), coinsEarned: DAILY_COIN_CAP, checkedIn: true, pets: 0 },
+      daily: {
+        date: localDateKey(T0),
+        coinsEarned: DAILY_COIN_CAP,
+        expEarned: 0,
+        checkedIn: true,
+        pets: 0,
+      },
     })
     const result = settle(save, 'catch', 40, T0)
 
@@ -238,7 +251,13 @@ describe('settle — 일일 코인 상한 (§7)', () => {
     // 순서가 뒤집히면 배고픈 펫이 남은 한도의 절반만 받고 나머지 한도가 사라진다.
     const save = makeSave({
       stats: { hunger: 0, mood: 50, clean: 50, energy: 50 },
-      daily: { date: localDateKey(T0), coinsEarned: DAILY_COIN_CAP - 20, checkedIn: true, pets: 0 },
+      daily: {
+        date: localDateKey(T0),
+        coinsEarned: DAILY_COIN_CAP - 20,
+        expEarned: 0,
+        checkedIn: true,
+        pets: 0,
+      },
     })
     const result = settle(save, 'catch', 60, T0)
 
@@ -263,21 +282,79 @@ describe('settle — 레벨업 (§6)', () => {
     expect(result.next.wallet.coins).toBe(100 + 27 + 100)
   })
 
-  it('한 판에 두 레벨 이상 오를 수 있다', () => {
-    // 라운드 130 이면 EXP 265 다. 100 + 160 을 넘어 Lv3 까지 간다.
+  it('한 판의 EXP 는 일일 상한에서 잘린다', () => {
+    // 라운드 130 이면 원래 EXP 265 다. 상한(140)이 그 위에서 자른다.
+    //
+    // 상한을 넣기 전에는 이 한 판으로 Lv3 까지 갔다. 그것이 "며칠 만에 다
+    // 컸다"의 정체였다 — §6 은 Lv10 까지 한 달을 가정하고 곡선을 짰는데
+    // EXP 에는 아무 상한도 없었다.
     const result = settle(makeSave(), 'echo', 130, T0)
 
-    expect(result.exp).toBe(265)
+    expect(result.expBeforeCap).toBe(265)
+    expect(result.exp).toBe(DAILY_EXP_CAP)
+    expect(result.expCapped).toBe(true)
+    expect(result.next.daily.expEarned).toBe(DAILY_EXP_CAP)
+    expect(result.leveledUpTo).toBe(2)
+  })
+
+  it('상한을 이미 채웠으면 EXP 가 0 이고 레벨이 오르지 않는다', () => {
+    const save = makeSave({
+      daily: {
+        date: localDateKey(T0),
+        coinsEarned: 0,
+        expEarned: DAILY_EXP_CAP,
+        checkedIn: true,
+        pets: 0,
+      },
+    })
+    const result = settle(save, 'echo', 130, T0)
+
+    expect(result.exp).toBe(0)
+    expect(result.expCapped).toBe(true)
+    expect(result.next.pet.level).toBe(1)
+    expect(result.next.daily.expEarned).toBe(DAILY_EXP_CAP)
+  })
+
+  it('남은 한도만큼만 준다', () => {
+    const save = makeSave({
+      daily: {
+        date: localDateKey(T0),
+        coinsEarned: 0,
+        expEarned: DAILY_EXP_CAP - 30,
+        checkedIn: true,
+        pets: 0,
+      },
+    })
+    const result = settle(save, 'echo', 130, T0)
+
+    expect(result.exp).toBe(30)
+    expect(result.next.daily.expEarned).toBe(DAILY_EXP_CAP)
+  })
+
+  it('EXP 가 이미 쌓여 있으면 한 판에 두 레벨도 오른다', () => {
+    // 상한(140)이 Lv1→3 에 필요한 260 보다 작아서, 맨바닥에서 두 레벨을 뛰는
+    // 일은 이제 없다. 그래도 정산은 여러 레벨을 처리할 수 있어야 한다 — 남은
+    // EXP 가 다음 필요치를 넘긴 채 고여 있으면 엉뚱한 행동에서 터진다.
+    const save = makeSave({ pet: { name: '구즉이', bornAt: T0, level: 1, exp: 130 } })
+    const result = settle(save, 'echo', 130, T0)
+
+    expect(result.exp).toBe(DAILY_EXP_CAP)
     expect(result.leveledUpTo).toBe(3)
     expect(result.next.pet.level).toBe(3)
-    expect(result.next.pet.exp).toBe(265 - expForNextLevel(1) - expForNextLevel(2))
+    expect(result.next.pet.exp).toBe(130 + DAILY_EXP_CAP - expForNextLevel(1) - expForNextLevel(2))
   })
 
   it('레벨업 보상 코인은 일일 상한에 걸리지 않는다', () => {
     // 상한은 "미니게임 합산"이다(§7). 상한을 채운 날 레벨이 올랐다고 보상이
     // 조용히 사라지면 사용자는 레벨업 문구와 지갑이 어긋나는 것을 본다.
     const save = makeSave({
-      daily: { date: localDateKey(T0), coinsEarned: DAILY_COIN_CAP, checkedIn: true, pets: 0 },
+      daily: {
+        date: localDateKey(T0),
+        coinsEarned: DAILY_COIN_CAP,
+        expEarned: 0,
+        checkedIn: true,
+        pets: 0,
+      },
     })
     const result = settle(save, 'echo', 50, T0)
 
@@ -321,7 +398,13 @@ describe('불변성', () => {
   it('canPlay 도 settle 도 입력 save 를 변형하지 않는다', () => {
     const save = makeSave({
       stats: { hunger: 0, mood: 0, clean: 50, energy: 50 },
-      daily: { date: localDateKey(T0), coinsEarned: DAILY_COIN_CAP - 5, checkedIn: true, pets: 0 },
+      daily: {
+        date: localDateKey(T0),
+        coinsEarned: DAILY_COIN_CAP - 5,
+        expEarned: 0,
+        checkedIn: true,
+        pets: 0,
+      },
     })
     const before = snapshot(save)
 

@@ -9,7 +9,24 @@ export type StatName = 'hunger' | 'mood' | 'clean' | 'energy'
 export type Stats = Record<StatName, number>
 
 /** 상점과 인벤토리가 다루는 물건. 음식만 있는 것은 M1 범위이기 때문이다. */
-export type FoodId = 'apple' | 'bread' | 'cake'
+/**
+ * 먹일 수 있는 것.
+ *
+ * 순서는 economy.ts 의 FOODS 와 같게 싼 것부터 적는다. FOOD_IDS 가 그 순서를
+ * 그대로 쓰고, 가방과 상점이 그 순서로 그린다.
+ */
+export type FoodId =
+  | 'apple'
+  | 'candy'
+  | 'orange'
+  | 'cookie'
+  | 'strawberry'
+  | 'bread'
+  | 'milk'
+  | 'cheese'
+  | 'donut'
+  | 'watermelon'
+  | 'cake'
 
 /**
  * 방에 놓는 가구. 먹는 것이 아니라 배치하는 것이라 FoodId 와 나눠 둔다.
@@ -62,6 +79,13 @@ export interface TutorialState {
 export interface DailyState {
   date: string
   coinsEarned: number
+  /**
+   * 오늘 미니게임으로 얻은 EXP. 상한(DAILY_EXP_CAP)을 재는 데 쓴다.
+   *
+   * 코인과 나란히 둔다. 예전에는 코인만 세고 EXP 는 아무도 세지 않아 성장이
+   * 설계보다 훨씬 빨랐다.
+   */
+  expEarned: number
   checkedIn: boolean
   pets: number
 }

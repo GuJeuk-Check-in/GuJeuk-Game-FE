@@ -75,6 +75,7 @@ describe('createSave', () => {
     expect(save.daily).toEqual({
       date: localDateKey(NOW),
       coinsEarned: 0,
+      expEarned: 0,
       checkedIn: false,
       pets: 0,
     })
@@ -115,7 +116,7 @@ describe('왕복', () => {
       },
       sleep: { since: NOW - 3600_000 },
       tutorial: { step: 6, done: true },
-      daily: { date: '2026-03-07', coinsEarned: 180, checkedIn: true, pets: 4 },
+      daily: { date: '2026-03-07', coinsEarned: 180, expEarned: 0, checkedIn: true, pets: 4 },
     }
 
     writeSave(storage, KEY, save)

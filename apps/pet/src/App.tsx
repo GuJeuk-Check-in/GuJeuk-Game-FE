@@ -37,7 +37,10 @@ import { StatBar } from './components/StatBar'
 import { WelcomeBackCard } from './components/WelcomeBackCard'
 import { RoomNav } from './components/RoomNav'
 import { ActionBar } from './components/ActionBar'
+import { foodIconUrl } from './game/sprites'
+import type { ParticleKind } from './game/effects'
 import { InventorySheet } from './components/InventorySheet'
+import { FoodTray } from './components/FoodTray'
 import { PlayMenu } from './components/PlayMenu'
 import { MinigameScreen } from './components/MinigameScreen'
 import { ResultCard } from './components/ResultCard'
@@ -128,6 +131,22 @@ const MINIGAME_ORDER = Object.keys(MINIGAME_TEXT) as MinigameId[]
  * Record 로 둔 것은 행동이 늘었을 때 빠뜨림을 타입이 잡게 하기 위함이다.
  * MINIGAME_TEXT 와 같은 이유다.
  */
+/**
+ * 행동마다 터뜨릴 이펙트와 개수.
+ *
+ * 소리와 나란히 표로 둔다. 조건문으로 흩으면 행동을 하나 더할 때 소리는 붙이고
+ * 이펙트는 빠뜨리기 쉽다 — 그러면 그 행동만 조용히 밋밋해진다.
+ *
+ * 깨우기에 이펙트가 없는 것은 의도다. 잠에서 깨는 것은 조용한 편이 맞고,
+ * 재울 때의 zZ 와 겹치면 무엇이 시작되고 끝났는지 흐려진다.
+ */
+const EFFECT_OF: Partial<Record<ActionKind, { kind: ParticleKind; count: number }>> = {
+  feed: { kind: 'crumb', count: 9 },
+  wash: { kind: 'bubble', count: 16 },
+  pat: { kind: 'heart', count: 6 },
+  sleep: { kind: 'zzz', count: 3 },
+}
+
 const SOUND_OF: Record<ActionKind, sound.SoundName> = {
   feed: 'feed',
   wash: 'wash',
@@ -214,6 +233,57 @@ function toDecorEdit(decor: DecorUi | null): DecorEdit | null {
  * 생각한다. Record 로 둔 것은 이유가 하나 늘었을 때 문구 누락을 타입이 잡게
  * 하기 위함이다.
  */
+/**
+ * 탭과 스와이프·문지르기를 가르는 이동 거리(논리 px).
+ *
+ * 손가락은 가만히 눌러도 몇 px 씩 흔들린다. 0 으로 두면 두드릴 때마다 스와이프로
+ * 읽혀 아무 일도 일어나지 않는다.
+ */
+const TAP_SLOP = 12
+
+/**
+ * 이만큼 문질러야 한 번 씻긴 것으로 본다.
+ *
+ * 짧으면 스치기만 해도 씻겨 "문지른다"는 감각이 사라지고, 길면 팔이 아프다.
+ * 펫 폭(80~128px)을 두어 번 왕복하는 정도로 잡았다.
+ */
+const SCRUB_DISTANCE = 220
+
+/** 이만큼 문지를 때마다 거품 하나. 촘촘하면 화면이 거품으로 덮인다. */
+const SCRUB_BUBBLE_EVERY = 22
+
+/**
+ * 펫을 두드렸을 때 방마다 하는 일.
+ *
+ * 주방과 욕실은 여기에 없다 — 두 방의 조작은 두드리기가 아니라 끌어다 놓기와
+ * 문지르기다. 두드려도 같은 일이 일어나면 그 조작을 아무도 찾지 않는다.
+ */
+const TAP_ACTION: Partial<Record<RoomId, ActionId>> = {
+  living: 'pat',
+  bed: 'sleep',
+  play: 'play',
+  shop: 'shop',
+}
+
+/** 두드리기로는 안 되는 방에서, 무엇을 해야 하는지 한 줄로 알려 준다. */
+const TAP_HINT: Partial<Record<RoomId, string>> = {
+  kitchen: '음식을 끌어다 펫에게 놓아 주세요.',
+  bath: '펫을 문질러 씻겨 주세요.',
+}
+
+/** 손끝 제스처의 진행 상태. 렌더와 무관해서 ref 에 둔다. */
+interface RoomGesture {
+  onPet: boolean
+  moved: number
+  scrub: number
+  /** 마지막으로 거품을 뿜은 문지른 거리. 일정 간격마다 하나씩 낸다. */
+  lastBubbleAt: number
+  lastX: number
+  lastY: number
+  /** 이번 제스처가 이미 무언가를 했는가. 한 번 문지르면 놓을 때 또 하지 않는다. */
+  done: boolean
+}
+
 const NOTICE_OF: Record<SessionEndReason, string | null> = {
   logout: null,
   // **"저장했다"고 말하지 않는다.** 유휴로 나갈 때는 올리기에 실패해도 나가는데
@@ -383,6 +453,18 @@ function PetTown({ session }: { session: Session }) {
   }, [idle.state])
 
   /** 끌기를 시작한 손끝과 가구 왼쪽 위의 차. 이걸 안 재면 잡는 순간 가구가 튄다. */
+  /* 직접 조작(펫 두드리기·문지르기·음식 끌어다 놓기)의 상태.
+     핸들러는 아래쪽 '직접 조작' 절에 있지만 훅은 여기 있어야 한다 —
+     로딩·재시도 분기가 중간에서 early return 하므로, 그 아래에서 부르면
+     렌더마다 훅 순서가 달라진다(react-hooks/rules-of-hooks). */
+  const gestureRef = useRef<RoomGesture | null>(null)
+  const [foodDrag, setFoodDrag] = useState<{
+    id: FoodId
+    x: number
+    y: number
+    over: boolean
+  } | null>(null)
+
   const grabRef = useRef({ dx: FURNITURE_HALF, dy: FURNITURE_HALF })
 
   // 캔버스가 만들어지는 시점에 현재 방을 알려주기 위한 최신 값. 상태를 그대로
@@ -668,6 +750,12 @@ function PetTown({ session }: { session: Session }) {
     if (kind === 'feed') gameRef.current?.eat()
     else gameRef.current?.bounce()
 
+    const effect = EFFECT_OF[kind]
+    if (effect) gameRef.current?.burst(effect.kind, effect.count)
+
+    // 레벨업은 행동 이펙트 위에 한 번 더 얹는다. 이 순간의 소식은 그쪽이다.
+    if (outcome.leveledUpTo !== null) gameRef.current?.burst('sparkle', 18)
+
     // 레벨이 올랐으면 행동 소리 **대신** 레벨업 소리를 낸다. 같은 프레임에 둘을
     // 겹쳐 내면 둘 다 뭉개지고, 이 순간의 소식은 레벨업 쪽이다.
     sound.play(outcome.leveledUpTo === null ? SOUND_OF[kind] : 'levelUp')
@@ -766,6 +854,119 @@ function PetTown({ session }: { session: Session }) {
   const handlePick = (food: FoodId) => {
     setSheetOpen(false)
     run('feed', food)
+  }
+
+  // ---- 직접 조작 ------------------------------------------------------------
+  //
+  // 돌봄을 버튼이 아니라 캔버스에서 한다. 펫을 두드리면 쓰다듬고, 문지르면
+  // 씻기고, 음식은 트레이에서 끌어다 놓는다. 좌표 변환과 충돌 판정은 배치와
+  // 마찬가지로 전부 PetGame 이 쥔다(toLogical · petHitTest).
+
+  const handleRoomDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const game = gameRef.current
+    // 전환 중에는 받지 않는다. 두 방이 지나가는 중이라 어느 쪽을 만졌는지 모른다.
+    if (!game || game.isSliding()) return
+
+    const point = game.toLogical(event.clientX, event.clientY)
+    gestureRef.current = {
+      onPet: game.petHitTest(point.x, point.y),
+      moved: 0,
+      scrub: 0,
+      lastBubbleAt: 0,
+      lastX: point.x,
+      lastY: point.y,
+      done: false,
+    }
+  }
+
+  const handleRoomMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const game = gameRef.current
+    const gesture = gestureRef.current
+    if (!game || !gesture) return
+
+    const point = game.toLogical(event.clientX, event.clientY)
+    const step = Math.hypot(point.x - gesture.lastX, point.y - gesture.lastY)
+
+    gesture.moved += step
+    gesture.lastX = point.x
+    gesture.lastY = point.y
+
+    // 욕실에서 펫 위를 문지르면 씻긴다. 펫 밖으로 나간 구간은 세지 않는다 —
+    // 세면 화면 아무 데나 휘저어도 씻겨 조작이 뜻을 잃는다.
+    if (gesture.done || room.id !== 'bath' || !game.petHitTest(point.x, point.y)) return
+
+    gesture.scrub += step
+
+    // 문지르는 동안 손끝에서 거품이 난다. 다 씻길 때까지 아무 반응이 없으면
+    // 문지르는 것이 먹히고 있는지 알 수 없다.
+    if (gesture.scrub - gesture.lastBubbleAt >= SCRUB_BUBBLE_EVERY) {
+      gesture.lastBubbleAt = gesture.scrub
+      game.emitAt('bubble', point.x, point.y)
+    }
+
+    if (gesture.scrub < SCRUB_DISTANCE) return
+
+    gesture.done = true
+    run('wash')
+  }
+
+  const handleRoomUp = () => {
+    const gesture = gestureRef.current
+    gestureRef.current = null
+
+    if (!gesture || gesture.done || !gesture.onPet) return
+    // 끌었으면 두드린 것이 아니다. 스와이프(방 이동)와 겹치지 않게 막는다.
+    if (gesture.moved > TAP_SLOP) return
+
+    const action = TAP_ACTION[room.id]
+    if (action) {
+      handleAction(action)
+      return
+    }
+
+    const hint = TAP_HINT[room.id]
+    if (hint) {
+      pushToast(hint)
+      sound.play('tap')
+    }
+  }
+
+  const handleFoodDragStart = (food: FoodId, event: ReactPointerEvent<HTMLElement>) => {
+    // 손가락이 트레이를 벗어나도 이동·놓기가 계속 오게 잡아 둔다. 없으면
+    // 캔버스 위로 올라가는 순간 끌던 음식이 사라진다.
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setFoodDrag({ id: food, x: event.clientX, y: event.clientY, over: false })
+  }
+
+  const handleFoodDragMove = (event: ReactPointerEvent<HTMLElement>) => {
+    const game = gameRef.current
+    setFoodDrag((drag) => {
+      if (!drag) return drag
+      const point = game ? game.toLogical(event.clientX, event.clientY) : null
+      return {
+        ...drag,
+        x: event.clientX,
+        y: event.clientY,
+        over: point !== null && game !== null && game.petHitTest(point.x, point.y),
+      }
+    })
+  }
+
+  const handleFoodDragEnd = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = foodDrag
+    setFoodDrag(null)
+    const game = gameRef.current
+    if (!drag || !game) return
+
+    const point = game.toLogical(event.clientX, event.clientY)
+    if (game.petHitTest(point.x, point.y)) {
+      run('feed', drag.id)
+      return
+    }
+
+    // 엉뚱한 데 놓은 것도 반응이 있어야 한다. 조용하면 눌리지 않은 줄 안다.
+    sound.play('refuse')
+    pushToast('펫에게 놓아 주세요.')
   }
 
   // ---- 가구 배치 ------------------------------------------------------------
@@ -942,7 +1143,13 @@ function PetTown({ session }: { session: Session }) {
             onClick={() => setLeaving(true)}
             aria-label={`${session.nickname} 님으로 로그인 중 — 나가기`}
           >
+            {/* 예전에는 문 이모지와 닉네임만 있어서, 이 버튼이 나가기라는 것을
+                화면 어디에서도 알 수 없었다. 로그인 화면은 "오른쪽 위 나가기를
+                눌러 주세요"라고 안내하는데 정작 그 글자가 없었다. 공용 기기에서
+                다음 사람이 앞사람 계정으로 들어가는 사고가 여기서 난다.
+                닉네임은 누구로 있는지 확인하는 보조 정보라 아래로 내린다. */}
             <span aria-hidden="true">🚪</span>
+            <span className="pt-hud__leave-label">나가기</span>
             <span className="pt-hud__leave-text">{session.nickname}</span>
           </button>
         ) : null}
@@ -986,6 +1193,16 @@ function PetTown({ session }: { session: Session }) {
           onPick={(item) => setDecor({ ...decor, picked: item, selected: null, drag: null })}
           onPickUp={handlePickUp}
           onExit={() => setDecor(null)}
+        />
+      ) : room.id === 'kitchen' ? (
+        /* 주방은 버튼 대신 트레이다. 먹이기는 이 게임에서 제일 자주 하는
+           행동인데 예전에는 버튼 → 시트 → 고르기 → 닫기로 제일 번거로웠다. */
+        <FoodTray
+          counts={save.inventory}
+          dragging={foodDrag?.id ?? null}
+          onDragStart={handleFoodDragStart}
+          onDragMove={handleFoodDragMove}
+          onDragEnd={handleFoodDragEnd}
         />
       ) : (
         <ActionBar
@@ -1094,7 +1311,18 @@ function PetTown({ session }: { session: Session }) {
                   onPointerUp={handleDecorUp}
                   onPointerCancel={handleDecorCancel}
                 />
-              ) : null}
+              ) : (
+                /* 돌봄 조작을 받는 면. 배치 면과 같은 자리에 하나만 둔다.
+                   스와이프는 RoomNav 가 touch 이벤트로 따로 받으므로 여기서
+                   포인터를 잡아도 방 이동은 그대로 된다. */
+                <div
+                  className="pt-touch__surface"
+                  onPointerDown={handleRoomDown}
+                  onPointerMove={handleRoomMove}
+                  onPointerUp={handleRoomUp}
+                  onPointerCancel={handleRoomUp}
+                />
+              )}
             </RoomNav>
           )}
 
@@ -1104,6 +1332,19 @@ function PetTown({ session }: { session: Session }) {
               이 순간의 진행이 어디에도 없지만, 서버만 막힌 것은 로컬에 남아 있고
               다음 로그인에 이어진다(sync.ts). 둘을 한 자리에 쌓지 않는 것은 띠가
               두 줄이 되면 캔버스를 덮기 때문이다. */}
+          {/* 손끝을 따라다니는 음식. 포인터를 잡고 있어 캔버스 위에서도 이어진다.
+          position: fixed 라 트레이와 캔버스 어디에 있든 같은 좌표계다. */}
+          {foodDrag ? (
+            <img
+              className="pt-drag"
+              data-over={foodDrag.over ? 'true' : undefined}
+              src={foodIconUrl(foodDrag.id)}
+              alt=""
+              draggable={false}
+              style={{ left: foodDrag.x, top: foodDrag.y }}
+            />
+          ) : null}
+
           {banner ? (
             <p className="pt-banner" role="status">
               {banner}

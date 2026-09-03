@@ -126,7 +126,7 @@ export function createSave(name: string, now: number): PetSave {
     // 튜토리얼은 2단계부터다(§9 의 0·1 은 이 이름 입력 화면이 대신한다). 진입
     // 지급은 startTutorial 이 붙이므로 여기서는 단계만 세운다.
     tutorial: { step: TUTORIAL_START_STEP, done: false },
-    daily: { date: localDateKey(now), coinsEarned: 0, checkedIn: false, pets: 0 },
+    daily: { date: localDateKey(now), coinsEarned: 0, expEarned: 0, checkedIn: false, pets: 0 },
     lastSeenAt: now,
   }
 }
@@ -406,6 +406,10 @@ function readDaily(value: unknown): DailyState {
   return {
     date: readString(daily.date, 'daily.date'),
     coinsEarned: readNumber(daily.coinsEarned, 'daily.coinsEarned'),
+    // 이 필드보다 먼저 저장된 세이브에는 없다. 없으면 0 으로 본다 — 하루치
+    // 집계일 뿐이라 없다고 세이브를 버릴 값이 아니고, 버전을 올리면 기존
+    // 세이브가 전부 거부된다(위의 version 검사).
+    expEarned: daily.expEarned === undefined ? 0 : readNumber(daily.expEarned, 'daily.expEarned'),
     checkedIn: readBoolean(daily.checkedIn, 'daily.checkedIn'),
     pets: readNumber(daily.pets, 'daily.pets'),
   }
