@@ -36,7 +36,6 @@ import { NamePrompt } from './components/NamePrompt'
 import { StatBar } from './components/StatBar'
 import { WelcomeBackCard } from './components/WelcomeBackCard'
 import { RoomNav } from './components/RoomNav'
-import { ActionBar } from './components/ActionBar'
 import { foodIconUrl } from './game/sprites'
 import type { ParticleKind } from './game/effects'
 import { InventorySheet } from './components/InventorySheet'
@@ -263,6 +262,21 @@ const TAP_ACTION: Partial<Record<RoomId, ActionId>> = {
   bed: 'sleep',
   play: 'play',
   shop: 'shop',
+}
+
+/**
+ * 방마다 아래에 적히는 조작 안내.
+ *
+ * 액션 바를 걷어낸 자리다. 버튼이 사라졌으므로 무엇을 만져야 하는지는 글로
+ * 남아야 한다 — 조작이 보이지 않는 게임은 "고장난 화면"과 구별되지 않는다.
+ */
+const HOWTO: Record<RoomId, string> = {
+  living: '펫을 두드려 쓰다듬어 주세요',
+  kitchen: '음식을 펫에게 끌어다 놓으세요',
+  bath: '펫을 문질러 씻겨 주세요',
+  bed: '펫을 두드려 재우세요',
+  play: '펫을 두드리면 미니게임이 열려요',
+  shop: '펫을 두드리면 상점이 열려요',
 }
 
 /** 두드리기로는 안 되는 방에서, 무엇을 해야 하는지 한 줄로 알려 준다. */
@@ -495,12 +509,14 @@ function PetTown({ session }: { session: Session }) {
    */
   const petLevel = save?.pet.level ?? null
   const petMoodZero = save !== null && save.stats.mood <= 0
+  const petAsleep = save !== null && save.sleep !== null
 
   // 성장 단계와 기분도 마운트 때 세워야 한다. 미니게임에서 돌아오면 방 캔버스가
   // 통째로 다시 붙는데, 그때 넣어 주지 않으면 아래 effect 가 돌기 전 한 프레임이
   // 기본값(아기 · 멀쩡한 얼굴)으로 그려진다.
-  const petViewRef = useRef<{ level: number; moodZero: boolean } | null>(null)
-  petViewRef.current = petLevel === null ? null : { level: petLevel, moodZero: petMoodZero }
+  const petViewRef = useRef<{ level: number; moodZero: boolean; asleep: boolean } | null>(null)
+  petViewRef.current =
+    petLevel === null ? null : { level: petLevel, moodZero: petMoodZero, asleep: petAsleep }
 
   // GameCanvas는 이 콜백을 마운트 시 한 번만 부른다. 돌려주는 함수에서
   // 게임을 확실히 정리해야 StrictMode 재마운트에서 루프가 두 벌 돌지 않는다.
@@ -532,8 +548,8 @@ function PetTown({ session }: { session: Session }) {
    */
   useEffect(() => {
     if (petLevel === null) return
-    gameRef.current?.setPet({ level: petLevel, moodZero: petMoodZero })
-  }, [petLevel, petMoodZero])
+    gameRef.current?.setPet({ level: petLevel, moodZero: petMoodZero, asleep: petAsleep })
+  }, [petLevel, petMoodZero, petAsleep])
 
   /**
    * 첫 사용자 제스처에서 오디오를 연다. **이 전에는 어떤 소리도 나지 않는다.**
@@ -1136,6 +1152,22 @@ function PetTown({ session }: { session: Session }) {
         {/* 판이 도는 동안에는 내린다. 확인 시트가 캔버스를 덮으면 게임은 보이지도
             눌리지도 않는데 루프는 그대로 돌아 혼자 진행된다(아래 판들과 같은 이유).
             한 판은 길어야 1분이라 그때까지 기다려도 된다. */}
+        {/* 꾸미기는 거실에서만. 액션 바를 걷어내면서 이리로 옮겼다 — 돌봄과
+            달리 이것은 펫을 만지는 행동이 아니라 화면 모드 전환이라, 캔버스
+            제스처로 두면 두드리기와 겹친다. */}
+        {room.id === DECOR_ROOM && playing === null ? (
+          <button
+            type="button"
+            className="pt-hud__decorate"
+            onClick={startDecorate}
+            /* 글자 없이 아이콘만 둔다. HUD 한 줄이 두 줄로 접히면 캔버스에 남는
+               높이가 줄어 방이 그만큼 작아진다. 뜻은 읽어 주기로 남긴다. */
+            aria-label="꾸미기"
+            title="꾸미기"
+          >
+            <span aria-hidden="true">🪴</span>
+          </button>
+        ) : null}
         {playing === null ? (
           <button
             type="button"
@@ -1195,8 +1227,8 @@ function PetTown({ session }: { session: Session }) {
           onExit={() => setDecor(null)}
         />
       ) : room.id === 'kitchen' ? (
-        /* 주방은 버튼 대신 트레이다. 먹이기는 이 게임에서 제일 자주 하는
-           행동인데 예전에는 버튼 → 시트 → 고르기 → 닫기로 제일 번거로웠다. */
+        /* 주방은 트레이다. 먹이기는 이 게임에서 제일 자주 하는 행동인데
+           예전에는 버튼 → 시트 → 고르기 → 닫기로 제일 번거로웠다. */
         <FoodTray
           counts={save.inventory}
           dragging={foodDrag?.id ?? null}
@@ -1205,14 +1237,15 @@ function PetTown({ session }: { session: Session }) {
           onDragEnd={handleFoodDragEnd}
         />
       ) : (
-        <ActionBar
-          actions={room.actions}
-          sleeping={save.sleep !== null}
-          lockedReason={isRoomUnlocked(save, room.id) ? null : '아직 열리지 않은 방이에요.'}
-          onAction={handleAction}
-          // 꾸미기는 거실에서만 뜬다. 다른 방에 두면 눌러 봐야 놓을 수 없다.
-          onDecorate={room.id === DECOR_ROOM ? startDecorate : undefined}
-        />
+        /* 액션 바를 걷어냈다. 돌봄은 전부 캔버스에서 직접 한다 — 버튼이 남아
+           있으면 두드리기·끌기·문지르기를 아무도 찾지 않는다. 대신 무엇을
+           하면 되는지 한 줄로 적는다. 이 줄이 없으면 처음 온 사람은 빈 화면을
+           본다. */
+        <p className="pt-howto">
+          {/* 침실만 상태에 따라 말이 달라진다. 자는 펫에게 "재우세요"라고
+              적혀 있으면 눌러도 안 되는 줄 안다. */}
+          {room.id === 'bed' && save.sleep !== null ? '펫을 두드려 깨우세요' : HOWTO[room.id]}
+        </p>
       )}
 
       {/* import.meta.env.DEV 는 Vite 가 빌드 시점에 false 로 치환하므로, 프로덕션
@@ -1321,6 +1354,17 @@ function PetTown({ session }: { session: Session }) {
                   onPointerMove={handleRoomMove}
                   onPointerUp={handleRoomUp}
                   onPointerCancel={handleRoomUp}
+                  /* 버튼을 걷어냈으므로 키보드·스크린리더의 경로가 여기밖에
+                     없다. 끌기와 문지르기는 키보드로 흉내 낼 수 없어서, 적어도
+                     그 방의 대표 동작 하나는 Enter 로 되게 둔다. */
+                  role="button"
+                  tabIndex={0}
+                  aria-label={HOWTO[room.id]}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return
+                    event.preventDefault()
+                    handleAction(room.actions[0])
+                  }}
                 />
               )}
             </RoomNav>
