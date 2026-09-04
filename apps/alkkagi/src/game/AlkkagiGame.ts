@@ -1,4 +1,5 @@
-import { Bodies, Body, Composite, Engine } from 'matter-js'
+import { Bodies, Body, Composite, Engine, Events } from 'matter-js'
+import type { IEventCollision } from 'matter-js'
 import { GameLoop, PointerInput, clamp, distance } from '@gujuck/game-core'
 import type { CanvasStage, PointerPoint } from '@gujuck/game-core'
 import type { PlacedStone, Player } from '@gujuck/api'
@@ -56,6 +57,26 @@ const GROW_RAMP_TICKS = 36
 /** 이 속도 아래로 느려지면 원래 크기로 돌아온다. */
 const GROW_KEEP_SPEED = 6
 
+export interface FlickVelocity {
+  x: number
+  y: number
+}
+
+/**
+ * 돌에서 손을 당긴 벡터를 서버에 보낼 초기 속도로 바꾼다.
+ *
+ * 입력 좌표나 렌더링과 분리해 두어 리메이크 중에도 알까기의 손맛을 숫자로
+ * 고정할 수 있다. 6px 미만은 탭으로 보고 무시하고, 150px부터는 최대 세기다.
+ */
+export function flickVelocity(dx: number, dy: number): FlickVelocity | null {
+  const pulled = Math.hypot(dx, dy)
+  if (pulled < 6) return null
+
+  const ratio = clamp(pulled, 0, MAX_PULL) / MAX_PULL
+  const speed = MAX_FLICK_SPEED * Math.pow(ratio, FLICK_CURVE)
+  return { x: (dx / pulled) * speed, y: (dy / pulled) * speed }
+}
+
 export type Mode = 'placement' | 'playing' | 'over'
 
 export interface AlkkagiSnapshot {
@@ -98,6 +119,14 @@ export interface AlkkagiGameOptions {
    * 먼저 비었는지 알 수 없다. 정확히 같은 순간이면 null이다.
    */
   onSettled: (hash: string, black: number, white: number, firstZero: Player | null) => void
+  /** 충돌 연출용 알림. 물리 상태에는 관여하지 않는다. */
+  onCollision?: () => void
+}
+
+interface ImpactBurst {
+  x: number
+  y: number
+  life: number
 }
 
 interface Stone {
@@ -138,6 +167,7 @@ export class AlkkagiGame {
     white: number,
     firstZero: Player | null,
   ) => void
+  private readonly onCollision?: () => void
 
   private readonly engine: Engine
   private readonly loop: GameLoop
@@ -173,6 +203,7 @@ export class AlkkagiGame {
 
   private skillsLeft: Skill[] = ['GROW', 'ANCHOR']
   private armingSkill: Skill | null = null
+  private impactBursts: ImpactBurst[] = []
 
   constructor(options: AlkkagiGameOptions) {
     this.stage = options.stage
@@ -182,8 +213,10 @@ export class AlkkagiGame {
     this.onFlickRequest = options.onFlickRequest
     this.onSkillRequest = options.onSkillRequest
     this.onSettled = options.onSettled
+    this.onCollision = options.onCollision
 
     this.engine = Engine.create({ gravity: { x: 0, y: 0, scale: 0 } })
+    Events.on(this.engine, 'collisionStart', this.handleCollision)
 
     this.input = new PointerInput({
       target: this.stage.canvas,
@@ -204,6 +237,7 @@ export class AlkkagiGame {
   destroy(): void {
     this.loop.destroy()
     this.input.destroy()
+    Events.off(this.engine, 'collisionStart', this.handleCollision)
     Composite.clear(this.engine.world, false)
     Engine.clear(this.engine)
   }
@@ -482,6 +516,10 @@ export class AlkkagiGame {
   private update(dtSec: number): void {
     if (this.mode !== 'playing') return
 
+    this.impactBursts = this.impactBursts
+      .map((burst) => ({ ...burst, life: burst.life - 1 }))
+      .filter((burst) => burst.life > 0)
+
     // 탈락 검사를 분할 갱신 **안에서** 한다. 마지막 한 개씩 남아 함께 나가는
     // 상황에서 누가 먼저 비었는지를 프레임보다 잘게 가려내야 하기 때문이다.
     const stepMs = (dtSec * 1000) / PHYSICS_SUBSTEPS
@@ -678,12 +716,10 @@ export class AlkkagiGame {
     // 당긴 반대 방향으로 튕긴다(새총). 당긴 거리가 곧 세기다.
     const dx = stone.body.position.x - world.x
     const dy = stone.body.position.y - world.y
-    const pulled = Math.hypot(dx, dy)
-    if (pulled < 6) return
+    const velocity = flickVelocity(dx, dy)
+    if (velocity === null) return
 
-    const ratio = clamp(pulled, 0, MAX_PULL) / MAX_PULL
-    const speed = MAX_FLICK_SPEED * Math.pow(ratio, FLICK_CURVE)
-    this.onFlickRequest(stone.id, (dx / pulled) * speed, (dy / pulled) * speed)
+    this.onFlickRequest(stone.id, velocity.x, velocity.y)
   }
 
   // ---- 좌표 변환 --------------------------------------------------------
@@ -718,7 +754,7 @@ export class AlkkagiGame {
     const { ctx } = this.stage
     const { scale, offsetX, offsetY } = this.viewport()
 
-    this.stage.fill('#0f1420')
+    this.stage.fill('#e5f7ff')
 
     ctx.save()
     ctx.translate(offsetX, offsetY)
@@ -733,17 +769,50 @@ export class AlkkagiGame {
     this.renderBoard(ctx)
 
     if (this.mode === 'placement') this.renderPlacement(ctx)
-    else this.renderStones(ctx)
+    else {
+      this.renderStones(ctx)
+      this.renderImpactBursts(ctx)
+    }
 
     ctx.restore()
   }
 
   private renderBoard(ctx: CanvasRenderingContext2D): void {
-    ctx.fillStyle = '#c98f4a'
-    ctx.fillRect(0, 0, BOARD, BOARD)
+    ctx.save()
+    ctx.shadowColor = 'rgba(43, 30, 61, 0.28)'
+    ctx.shadowBlur = 22
+    ctx.shadowOffsetY = 14
+    ctx.fillStyle = '#2b1e3d'
+    ctx.beginPath()
+    ctx.roundRect(-8, -8, BOARD + 16, BOARD + 16, 34)
+    ctx.fill()
+    ctx.restore()
 
-    ctx.strokeStyle = 'rgba(60, 34, 12, 0.45)'
-    ctx.lineWidth = 2
+    const wood = ctx.createLinearGradient(0, 0, BOARD, BOARD)
+    wood.addColorStop(0, '#ffd889')
+    wood.addColorStop(0.45, '#eeb85e')
+    wood.addColorStop(1, '#d99a45')
+    ctx.fillStyle = wood
+    ctx.beginPath()
+    ctx.roundRect(0, 0, BOARD, BOARD, 28)
+    ctx.fill()
+
+    ctx.save()
+    ctx.beginPath()
+    ctx.roundRect(0, 0, BOARD, BOARD, 28)
+    ctx.clip()
+
+    for (let y = 38; y < BOARD; y += 62) {
+      ctx.strokeStyle = 'rgba(112, 57, 16, 0.12)'
+      ctx.lineWidth = 5
+      ctx.beginPath()
+      ctx.moveTo(0, y)
+      ctx.bezierCurveTo(160, y - 14, 410, y + 16, BOARD, y - 5)
+      ctx.stroke()
+    }
+
+    ctx.strokeStyle = 'rgba(76, 42, 22, 0.2)'
+    ctx.lineWidth = 3
     for (let i = 1; i < 5; i += 1) {
       const p = (BOARD / 5) * i
       ctx.beginPath()
@@ -755,18 +824,40 @@ export class AlkkagiGame {
     }
 
     // 중앙선. 배치 단계에서 진영 경계가 어디인지가 가장 중요한 정보다.
-    ctx.strokeStyle = 'rgba(40, 20, 5, 0.7)'
-    ctx.lineWidth = 3
+    ctx.strokeStyle = '#7c3aed'
+    ctx.lineWidth = 6
+    ctx.setLineDash([16, 10])
     ctx.beginPath()
     ctx.moveTo(0, BOARD / 2)
     ctx.lineTo(BOARD, BOARD / 2)
     ctx.stroke()
+    ctx.setLineDash([])
+
+    this.drawBoardLabel(ctx, this.myColor === 'white' ? '내 진영' : '상대 진영', BOARD / 2, 28)
+    this.drawBoardLabel(
+      ctx,
+      this.myColor === 'black' ? '내 진영' : '상대 진영',
+      BOARD / 2,
+      BOARD - 18,
+    )
+    ctx.restore()
+  }
+
+  private drawBoardLabel(ctx: CanvasRenderingContext2D, label: string, x: number, y: number): void {
+    ctx.save()
+    ctx.translate(x, y)
+    if (this.flipped) ctx.rotate(Math.PI)
+    ctx.fillStyle = '#2b1e3d'
+    ctx.font = '800 16px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(label, 0, 0)
+    ctx.restore()
   }
 
   private renderPlacement(ctx: CanvasRenderingContext2D): void {
     const { min, max } = this.myHalf()
 
-    ctx.fillStyle = 'rgba(90, 200, 150, 0.14)'
+    ctx.fillStyle = 'rgba(182, 239, 160, 0.28)'
     ctx.fillRect(0, min - STONE_RADIUS, BOARD, max - min + STONE_RADIUS * 2)
 
     const valid = this.placementValid()
@@ -776,7 +867,7 @@ export class AlkkagiGame {
       if (!valid) {
         ctx.beginPath()
         ctx.arc(point.x, point.y, STONE_RADIUS + 3, 0, Math.PI * 2)
-        ctx.strokeStyle = 'rgba(255, 110, 110, 0.9)'
+        ctx.strokeStyle = '#d81e3c'
         ctx.lineWidth = 3
         ctx.stroke()
       }
@@ -788,14 +879,32 @@ export class AlkkagiGame {
     // 눈대중으로 겨누는 것이 이 게임의 재미다.
     if (this.dragging && this.dragPoint) {
       const { position } = this.dragging.body
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'
-      ctx.lineWidth = 4
+      const pull = Math.min(
+        distance(position.x, position.y, this.dragPoint.x, this.dragPoint.y),
+        MAX_PULL,
+      )
+      const power = pull / MAX_PULL
+      ctx.strokeStyle = power > 0.78 ? '#ff3d8a' : '#7c3aed'
+      ctx.lineWidth = 5 + power * 5
       ctx.setLineDash([12, 8])
       ctx.beginPath()
       ctx.moveTo(position.x, position.y)
       ctx.lineTo(this.dragPoint.x, this.dragPoint.y)
       ctx.stroke()
       ctx.setLineDash([])
+
+      ctx.fillStyle = '#2b1e3d'
+      ctx.beginPath()
+      ctx.roundRect(position.x - 58, position.y + 42, 116, 22, 11)
+      ctx.fill()
+      const meter = ctx.createLinearGradient(position.x - 54, 0, position.x + 54, 0)
+      meter.addColorStop(0, '#8fddf7')
+      meter.addColorStop(0.72, '#ffc93c')
+      meter.addColorStop(1, '#ff3d8a')
+      ctx.fillStyle = meter
+      ctx.beginPath()
+      ctx.roundRect(position.x - 54, position.y + 46, 108 * power, 14, 7)
+      ctx.fill()
     }
 
     for (const stone of this.stones) {
@@ -809,8 +918,8 @@ export class AlkkagiGame {
       if (stone.anchored && mine) {
         ctx.beginPath()
         ctx.arc(x, y, STONE_RADIUS + 8, 0, Math.PI * 2)
-        ctx.strokeStyle = 'rgba(255, 196, 84, 0.9)'
-        ctx.lineWidth = 3
+        ctx.strokeStyle = '#7c3aed'
+        ctx.lineWidth = 5
         ctx.setLineDash([6, 5])
         ctx.stroke()
         ctx.setLineDash([])
@@ -819,18 +928,49 @@ export class AlkkagiGame {
       if (stone.growArmed && mine) {
         ctx.beginPath()
         ctx.arc(x, y, STONE_RADIUS + 8, 0, Math.PI * 2)
-        ctx.strokeStyle = 'rgba(120, 255, 180, 0.9)'
-        ctx.lineWidth = 3
+        ctx.strokeStyle = '#2fbf6b'
+        ctx.lineWidth = 5
         ctx.stroke()
       }
 
       if (stone.owner === this.myColor && (this.myTurn || this.armingSkill !== null)) {
         ctx.beginPath()
         ctx.arc(x, y, STONE_RADIUS + 5, 0, Math.PI * 2)
-        ctx.strokeStyle = 'rgba(120, 220, 255, 0.75)'
-        ctx.lineWidth = 2
+        ctx.strokeStyle = '#ff3d8a'
+        ctx.lineWidth = 3
         ctx.stroke()
       }
+    }
+  }
+
+  private handleCollision = (event: IEventCollision<Engine>): void => {
+    for (const pair of event.pairs.slice(0, 3)) {
+      const x = (pair.bodyA.position.x + pair.bodyB.position.x) / 2
+      const y = (pair.bodyA.position.y + pair.bodyB.position.y) / 2
+      this.impactBursts.push({ x, y, life: 18 })
+    }
+    this.impactBursts = this.impactBursts.slice(-12)
+    this.onCollision?.()
+  }
+
+  private renderImpactBursts(ctx: CanvasRenderingContext2D): void {
+    for (const burst of this.impactBursts) {
+      const progress = 1 - burst.life / 18
+      ctx.save()
+      ctx.globalAlpha = 1 - progress
+      ctx.translate(burst.x, burst.y)
+      ctx.strokeStyle = progress > 0.55 ? '#ff3d8a' : '#ffc93c'
+      ctx.lineWidth = 5
+      for (let ray = 0; ray < 8; ray += 1) {
+        const angle = (Math.PI * 2 * ray) / 8
+        const inner = 16 + progress * 10
+        const outer = 31 + progress * 22
+        ctx.beginPath()
+        ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner)
+        ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer)
+        ctx.stroke()
+      }
+      ctx.restore()
     }
   }
 
@@ -841,12 +981,39 @@ export class AlkkagiGame {
     owner: Player,
     radius: number = STONE_RADIUS,
   ): void {
+    ctx.save()
+    ctx.shadowColor = 'rgba(43, 30, 61, 0.3)'
+    ctx.shadowBlur = 7
+    ctx.shadowOffsetY = 6
     ctx.beginPath()
-    ctx.arc(x, y, radius, 0, Math.PI * 2)
-    ctx.fillStyle = owner === 'black' ? '#1b1b1f' : '#f4f4f6'
+    ctx.ellipse(x, y, radius, radius * 0.93, 0, 0, Math.PI * 2)
+    const stone = ctx.createRadialGradient(
+      x - radius * 0.35,
+      y - radius * 0.45,
+      radius * 0.08,
+      x,
+      y,
+      radius,
+    )
+    if (owner === 'black') {
+      stone.addColorStop(0, '#716582')
+      stone.addColorStop(0.38, '#382c49')
+      stone.addColorStop(1, '#171020')
+    } else {
+      stone.addColorStop(0, '#ffffff')
+      stone.addColorStop(0.48, '#fff2d4')
+      stone.addColorStop(1, '#d8c6ae')
+    }
+    ctx.fillStyle = stone
     ctx.fill()
-    ctx.lineWidth = 2
-    ctx.strokeStyle = owner === 'black' ? '#3a3a45' : '#c3c3cc'
+    ctx.shadowColor = 'transparent'
+    ctx.lineWidth = 4
+    ctx.strokeStyle = '#2b1e3d'
     ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(x - radius * 0.28, y - radius * 0.3, radius * 0.17, 0, Math.PI * 2)
+    ctx.fillStyle = owner === 'black' ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.7)'
+    ctx.fill()
+    ctx.restore()
   }
 }

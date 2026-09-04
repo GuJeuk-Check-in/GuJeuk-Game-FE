@@ -1,4 +1,5 @@
-import { GameShell, Icon, ResultOverlay } from '@gujuck/ui'
+import { useEffect } from 'react'
+import { GameShell, Icon, MuteButton, ResultOverlay, gameAudio } from '@gujuck/ui'
 import { Board } from '../components/Board'
 import { MARKS_PER_PLAYER } from '../game/rules'
 import type { Match } from '../useMatch'
@@ -22,6 +23,11 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
   // 사라질 칸은 지금 둘 사람 기준이다. 상대 차례엔 상대 것이 흐려진다.
   const vanishingCell = turn === 'X' ? vanishing.x : vanishing.o
 
+  useEffect(() => {
+    if (!result) return
+    gameAudio.play(result.won ? 'ttt-win' : 'ttt-lose')
+  }, [result])
+
   return (
     <GameShell
       header={
@@ -32,10 +38,17 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
               {profile?.nickname ?? '나'}({myMark}) vs {opponent?.nickname ?? '상대'}
             </span>
           </div>
-          <button className="gj-btn ttt-btn--sm" onClick={match.resign} disabled={Boolean(result)}>
-            <Icon name="flag" size={15} />
-            기권
-          </button>
+          <div className="ttt-header__actions">
+            <MuteButton className="ttt-btn--sm" />
+            <button
+              className="gj-btn ttt-btn--sm"
+              onClick={match.resign}
+              disabled={Boolean(result)}
+            >
+              <Icon name="flag" size={15} />
+              기권
+            </button>
+          </div>
         </div>
       }
       footer={
@@ -59,6 +72,9 @@ export function OnlineBoardScreen({ match, onExit }: Props) {
         // 눌리는 것처럼 보이면 자기 차례로 착각한다.
         disabled={!myTurn}
         onPlace={match.place}
+        turn={turn}
+        xLabel={myMark === 'X' ? (profile?.nickname ?? '나') : (opponent?.nickname ?? '상대')}
+        oLabel={myMark === 'O' ? (profile?.nickname ?? '나') : (opponent?.nickname ?? '상대')}
       />
 
       <ResultOverlay

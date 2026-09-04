@@ -110,6 +110,8 @@ body {
 .gj-shell__header,
 .gj-shell__footer {
   flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
   padding: var(--gj-gap);
 }
 
@@ -117,6 +119,8 @@ body {
   /* min-height:0 이 없으면 flex 자식이 내용 크기만큼 밀려 캔버스가 넘친다. */
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
   position: relative;
 }
 
@@ -266,5 +270,166 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---- Jelly Pop 리메이크 테마 ------------------------------------------- */
+
+[data-gj-theme='candy'] {
+  --gj-bg: #fff3db;
+  --gj-surface: #ffffff;
+  --gj-surface-2: #ffe0b8;
+  --gj-border: #d8c6ae;
+  --gj-border-strong: #2b1e3d;
+  --gj-field: #fffaf0;
+  --gj-text: #2b1e3d;
+  --gj-text-dim: #5a4a6e;
+  --gj-accent: #ffc93c;
+  --gj-accent-ink: #2b1e3d;
+  --gj-danger: #d81e3c;
+  --gj-danger-ink: #ffffff;
+  --gj-success: #2fbf6b;
+  --gj-radius: 18px;
+  --gj-radius-lg: 26px;
+  --gj-gap: 14px;
+  --gj-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--gj-text);
+  font-family: Pretendard, SUIT, 'Noto Sans KR', system-ui, sans-serif;
+}
+
+[data-gj-theme='candy'] .gj-shell {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  width: 100%;
+  min-width: 0;
+  max-width: 100vw;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255, 201, 60, 0.28) 0 6px, transparent 7px),
+    radial-gradient(circle at 88% 24%, rgba(255, 61, 138, 0.18) 0 8px, transparent 9px),
+    radial-gradient(circle at 82% 82%, rgba(143, 221, 247, 0.32) 0 10px, transparent 11px),
+    linear-gradient(155deg, #fff9ea 0%, #fff0d1 58%, #e8f8ff 100%);
+  background-size: auto, auto, auto, auto;
+}
+
+[data-gj-theme='candy'] .gj-shell::before,
+[data-gj-theme='candy'] .gj-shell::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 180px;
+  height: 70px;
+  border: 3px solid rgba(43, 30, 61, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+[data-gj-theme='candy'] .gj-shell::before {
+  top: 12%;
+  left: -70px;
+  transform: rotate(-10deg);
+}
+
+[data-gj-theme='candy'] .gj-shell::after {
+  right: -80px;
+  bottom: 16%;
+  transform: rotate(8deg);
+}
+
+[data-gj-theme='candy'] :where(button, a, input, [tabindex]):focus-visible {
+  outline: 3px solid #5b21b6;
+  outline-offset: 3px;
+}
+
+[data-gj-theme='candy'] .gj-shell__header,
+[data-gj-theme='candy'] .gj-shell__footer {
+  z-index: 2;
+}
+
+[data-gj-theme='candy'] .gj-btn {
+  min-height: 46px;
+  border: 3px solid #2b1e3d;
+  background: #ffffff;
+  color: #2b1e3d;
+  border-radius: 16px;
+  padding: 9px 17px;
+  font-weight: 800;
+  box-shadow: 0 5px 0 rgba(43, 30, 61, 0.25);
+  transform: translateY(-2px);
+  transition:
+    transform 120ms var(--gj-ease),
+    box-shadow 120ms var(--gj-ease),
+    background 120ms var(--gj-ease);
+}
+
+[data-gj-theme='candy'] .gj-btn:hover:not(:disabled) {
+  background: #fff7dc;
+  transform: translateY(-4px);
+  box-shadow: 0 7px 0 rgba(43, 30, 61, 0.22);
+}
+
+[data-gj-theme='candy'] .gj-btn:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(43, 30, 61, 0.28);
+}
+
+[data-gj-theme='candy'] .gj-btn--primary {
+  background: #ffc93c;
+}
+
+[data-gj-theme='candy'] .gj-btn:disabled {
+  opacity: 0.5;
+  filter: saturate(0.45);
+  box-shadow: 0 2px 0 rgba(43, 30, 61, 0.18);
+  transform: none;
+}
+
+[data-gj-theme='candy'] .gj-overlay {
+  background: rgba(43, 30, 61, 0.58);
+  backdrop-filter: blur(4px);
+}
+
+[data-gj-theme='candy'] .gj-overlay__sheet {
+  border: 4px solid #2b1e3d;
+  box-shadow: 0 10px 0 rgba(43, 30, 61, 0.28);
+}
+
+.gj-mute {
+  min-width: 76px;
+  padding-inline: 12px;
+}
+
+.gj-mute__icon {
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: var(--gj-accent);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.gj-mute__label {
+  font-size: 13px;
+}
+
+@media (max-width: 520px) {
+  .gj-mute {
+    min-width: 46px;
+    width: 46px;
+    padding: 8px;
+  }
+
+  .gj-mute__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 }

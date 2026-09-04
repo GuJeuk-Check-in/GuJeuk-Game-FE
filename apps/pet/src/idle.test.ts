@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { IDLE_LIMIT_MS, IDLE_WARN_MS, idleTick } from './idle'
+import { IDLE_LIMIT_MS, IDLE_WARN_MS, idleTick, isSessionStale } from './idle'
 
 // 시각은 언제나 상수로 주입한다. 이 저장소의 테스트는 타이머를 조작하지 않는다
 // (stats.test.ts 와 같은 방식).
@@ -83,5 +83,42 @@ describe('idleTick', () => {
   it('경고 구간은 만료보다 짧다', () => {
     // 두 상수가 뒤집히면 경고가 영원히 뜨거나 아예 뜨지 않는다.
     expect(IDLE_WARN_MS).toBeLessThan(IDLE_LIMIT_MS)
+  })
+})
+
+/**
+ * 탭을 닫아도 신원은 브라우저에 남는다. 유휴 타이머는 탭이 열려 있을 때만 도니까,
+ * **닫혀 있던 시간을 세는 것은 이 함수뿐이다.** 여기가 틀리면 공용 기기에서
+ * 다음 사람이 앞사람으로 로그인된 화면을 받는다.
+ */
+describe('isSessionStale', () => {
+  const T = new Date(2026, 0, 15, 9, 0, 0, 0).getTime()
+
+  it('방금 움직였으면 살아 있다', () => {
+    expect(isSessionStale(T, T)).toBe(false)
+    expect(isSessionStale(T, T + IDLE_LIMIT_MS - 1)).toBe(false)
+  })
+
+  it('5분이 지나면 끝난 것으로 본다', () => {
+    expect(isSessionStale(T, T + IDLE_LIMIT_MS)).toBe(true)
+  })
+
+  /** 밤새 꺼 두었다 켠 기기가 여기에 걸린다. 앞사람의 화면이 뜨면 안 된다. */
+  it('한참 지난 기록은 확실히 끝났다', () => {
+    expect(isSessionStale(T, T + 12 * 60 * 60 * 1000)).toBe(true)
+  })
+
+  /**
+   * 되감기는 idleTick 과 같은 판단이다 — 근거가 없을 때 세션을 끊으면 멀쩡히
+   * 놀던 사람이 튕긴다. 최악이 5분 더이고 그 5분은 유휴 타이머가 다시 잡는다.
+   */
+  it('시계가 되감겨도 끊지 않는다', () => {
+    expect(isSessionStale(T, T - 60 * 60 * 1000)).toBe(false)
+  })
+
+  it('유휴 만료와 같은 문턱을 쓴다', () => {
+    // 둘이 갈리면 "5분"이 화면마다 다른 뜻이 된다.
+    expect(isSessionStale(T, T + IDLE_LIMIT_MS)).toBe(true)
+    expect(idleTick(T, T + IDLE_LIMIT_MS).state).toEqual({ kind: 'expired' })
   })
 })

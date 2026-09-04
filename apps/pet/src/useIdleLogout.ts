@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { IDLE_ACTIVE, idleTick } from './idle'
 import type { IdleState } from './idle'
+import { touchSession } from './session'
 
 /**
  * 유휴 판정을 화면에 잇는다. 규칙 자체는 idle.ts 에 있다.
@@ -110,9 +111,16 @@ export function useIdleLogout({ onExpire }: UseIdleLogoutOptions): UseIdleLogout
     for (const name of ACTIVITY_EVENTS) window.addEventListener(name, keepAwake, options)
 
     const tick = () => {
-      const result = idleTick(sinceRef.current, Date.now())
+      const now = Date.now()
+      const result = idleTick(sinceRef.current, now)
       sinceRef.current = result.since
       setState(result.state)
+
+      // 마지막 조작 시각을 브라우저에도 남긴다. **이 타이머는 탭이 열려 있을
+      // 때만 도는데, 공용 기기에서 다 놀았다는 신호는 대개 창을 닫는 것이다.**
+      // 남겨 두지 않으면 다음 사람이 같은 주소를 열었을 때 앞사람으로 로그인된
+      // 화면을 그대로 받는다(session.ts 의 currentSession).
+      if (result.state.kind === 'active') touchSession(now)
 
       if (result.state.kind === 'expired' && !firedRef.current) {
         firedRef.current = true

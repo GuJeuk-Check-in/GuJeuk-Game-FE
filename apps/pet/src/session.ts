@@ -7,6 +7,7 @@
 
 import { tokenStore } from '@gujuck/api'
 import type { AuthResult } from '@gujuck/api'
+import { isSessionStale } from './idle'
 
 const SESSION_KEY = 'gj.pet.session.v1'
 
@@ -28,16 +29,26 @@ export interface Session {
  */
 interface Stored extends Session {
   token: string
+  /**
+   * 마지막으로 조작이 있었던 시각.
+   *
+   * **탭이 닫힌 뒤에도 세션이 살아 있는 것을 막는 값이다.** 유휴 타이머는 탭이
+   * 열려 있을 때만 도는데, 공용 기기에서 다 놀았다는 신호는 대개 창을 닫는
+   * 것이다. 이 값이 없으면 다음 사람이 같은 주소를 열었을 때 앞사람으로
+   * 로그인된 화면을 그대로 받는다.
+   */
+  lastActiveAt: number
 }
 
 /**
  * 세션이 끝난 이유. **화면이 "나갔다"와 "쫓겨났다"를 구분해 알려야 한다.**
  *
  * 쫓겨난 사람은 자기가 뭘 눌러서 그렇게 된 것이 아니므로, 이유를 읽지 못하면
- * 게임이 고장 났다고 생각한다. 'idle'(한동안 조작이 없어 자동으로 나감)과
- * 'expired'(토큰 만료)는 둘 다 그런 경우이고, 사람에게는 서로 다른 사건이다.
+ * 게임이 고장 났다고 생각한다. 'idle'(한동안 조작이 없어 자동으로 나감),
+ * 'expired'(토큰 만료), 'superseded'(다른 탭에서 다른 사람이 로그인함)는 전부
+ * 그런 경우이고, 사람에게는 서로 다른 사건이다.
  */
-export type SessionEndReason = 'logout' | 'idle' | 'expired'
+export type SessionEndReason = 'logout' | 'idle' | 'expired' | 'superseded'
 
 type Listener = (reason: SessionEndReason) => void
 
@@ -66,26 +77,40 @@ function read(): Stored | null {
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed !== 'object' || parsed === null) return null
 
-    const { memberId, nickname, token } = parsed as Record<string, unknown>
+    const { memberId, nickname, token, lastActiveAt } = parsed as Record<string, unknown>
     if (typeof memberId !== 'number' || !Number.isFinite(memberId)) return null
     if (typeof nickname !== 'string' || typeof token !== 'string') return null
+    // lastActiveAt 이 없는 기록은 이 값을 넣기 전에 만들어진 것이다. 신선한지
+    // 알 수 없으므로 없는 것으로 본다 — 한 번 더 로그인하는 값이 남의 세션을
+    // 물려받는 것보다 싸다.
+    if (typeof lastActiveAt !== 'number' || !Number.isFinite(lastActiveAt)) return null
 
-    return { memberId, nickname, token }
+    return { memberId, nickname, token, lastActiveAt }
   } catch {
     return null
   }
 }
 
 /**
- * 지금 로그인한 사람. 없거나 토큰이 어긋나면 null 이다.
+ * 지금 로그인한 사람. 없거나, 토큰이 어긋나거나, **오래됐으면** null 이다.
  *
- * 어긋난 기록은 여기서 지우지 않는다. 읽기 함수가 지우면 언제 지워졌는지
- * 추적할 수 없고, 어차피 다음 로그인이 통째로 덮어쓴다.
+ * 오래됨을 보는 이유가 중요하다. 이 기록은 localStorage 에 있어 **탭을 닫아도
+ * 남고**, 유휴 타이머는 탭이 열려 있을 때만 돈다. 검사하지 않으면 앞사람이 창을
+ * 닫고 자리를 뜬 뒤 다음 사람이 같은 주소를 열었을 때 앞사람으로 로그인된 화면을
+ * 그대로 받는다 — 유휴 로그아웃을 넣은 이유가 통째로 사라진다.
+ *
+ * 어긋나거나 오래된 기록을 여기서 지우지는 않는다. 읽기 함수가 지우면 언제
+ * 지워졌는지 추적할 수 없고, 어차피 다음 로그인이 통째로 덮어쓴다.
+ *
+ * `now` 를 인자로 받는 것은 판정을 테스트할 수 있게 하려는 것이다(이 앱의
+ * 테스트는 node 환경이라 시각을 주입해야 한다). React 의 lazy initializer 는
+ * 인자 없이 부르므로 기본값이 그대로 쓰인다.
  */
-export function currentSession(): Session | null {
+export function currentSession(now: number = Date.now()): Session | null {
   const stored = read()
   if (!stored) return null
   if (stored.token !== tokenStore.get()) return null
+  if (isSessionStale(stored.lastActiveAt, now)) return null
 
   return { memberId: stored.memberId, nickname: stored.nickname }
 }
@@ -98,11 +123,43 @@ export function beginSession(result: AuthResult): Session {
     token: result.token,
     memberId: result.memberId,
     nickname: result.nickname,
+    lastActiveAt: Date.now(),
   }
 
-  storage()?.setItem(SESSION_KEY, JSON.stringify(stored))
+  write(stored)
 
   return { memberId: stored.memberId, nickname: stored.nickname }
+}
+
+/**
+ * 마지막 조작 시각을 갱신한다. 유휴 타이머가 매 초 부른다.
+ *
+ * **매번 쓰지 않는다.** localStorage 쓰기는 동기라 렌더를 막고, 이 값이 몇 초
+ * 낡아도 판정(5분)에 영향이 없다. 대신 탭이 갑자기 죽어도 마지막 기록이 최대
+ * 이 간격만큼만 낡는다.
+ */
+const TOUCH_INTERVAL_MS = 10_000
+
+let touchedAt = 0
+
+export function touchSession(at: number): void {
+  if (at - touchedAt < TOUCH_INTERVAL_MS) return
+
+  const stored = read()
+  // 기록이 없거나 남의 것이면 건드리지 않는다. 여기서 되살리면 방금 끝난
+  // 세션이 조작 하나로 살아 돌아온다.
+  if (!stored || stored.token !== tokenStore.get()) return
+
+  touchedAt = at
+  write({ ...stored, lastActiveAt: at })
+}
+
+function write(stored: Stored): void {
+  try {
+    storage()?.setItem(SESSION_KEY, JSON.stringify(stored))
+  } catch {
+    /* 저장 못 해도 이번 세션은 메모리로 돈다 */
+  }
 }
 
 /**
@@ -116,6 +173,31 @@ export function beginSession(result: AuthResult): Session {
  */
 export function endSession(reason: 'logout' | 'idle' = 'logout'): void {
   clear(reason)
+}
+
+/**
+ * 이 탭의 신원이 아직 유효한가 — 기록의 토큰이 여전히 지금 토큰인가.
+ *
+ * **요청을 보내기 전에 물어야 한다.** 토큰은 한 칸을 공유하고 요청할 때마다
+ * 새로 읽히므로(packages/api 의 client.ts), 다른 탭에서 다른 사람이 로그인하면
+ * 이 탭의 요청이 **그 사람 앞으로 나간다.** 서버는 주인을 토큰으로만 정하니
+ * 앞사람의 세이브가 뒷사람의 행에 쓰인다.
+ */
+export function sessionHolds(): boolean {
+  const stored = read()
+  return stored !== null && stored.token === tokenStore.get()
+}
+
+/**
+ * 다른 사람이 이 기기에서 로그인해 이 탭의 신원이 밀려났다.
+ *
+ * **tokenStore 를 건드리지 않는다.** 그 토큰은 이제 그 사람 것이고, 지우면
+ * 옆 탭에서 놀고 있는 사람이 튕긴다. 우리가 버릴 것은 우리 기록뿐이다.
+ */
+export function supersedeSession(): void {
+  touchedAt = 0
+  storage()?.removeItem(SESSION_KEY)
+  for (const listener of [...listeners]) listener('superseded')
 }
 
 /**
@@ -141,8 +223,15 @@ export function onSessionEnd(listener: Listener): () => void {
 }
 
 function clear(reason: SessionEndReason): void {
+  // 다음 세션이 이 값 때문에 첫 갱신을 건너뛰지 않게 되돌린다.
+  touchedAt = 0
+
+  // 토큰이 이미 다른 사람 것이면 두고 간다. 토큰 칸은 하나뿐이라, 밀려난 탭이
+  // 나가면서 지우면 **지금 놀고 있는 사람이 튕긴다.**
+  const mine = sessionHolds()
+
   storage()?.removeItem(SESSION_KEY)
-  tokenStore.clear()
+  if (mine) tokenStore.clear()
   // 복사해서 도는 것은 듣는 쪽이 자기를 떼는 경우 때문이다. 도는 중에 Set 을
   // 건드리면 남은 하나를 건너뛴다.
   for (const listener of [...listeners]) listener(reason)

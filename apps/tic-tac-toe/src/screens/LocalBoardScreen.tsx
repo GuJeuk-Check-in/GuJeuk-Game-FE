@@ -1,4 +1,5 @@
-import { GameShell, Icon, ResultOverlay } from '@gujuck/ui'
+import { useEffect } from 'react'
+import { GameShell, Icon, MuteButton, ResultOverlay, gameAudio } from '@gujuck/ui'
 import { Board } from '../components/Board'
 import { MARKS_PER_PLAYER } from '../game/rules'
 import { AI, HUMAN, useGame } from '../game/useGame'
@@ -17,6 +18,11 @@ interface Props {
 export function LocalBoardScreen({ onExit }: Props) {
   const game = useGame()
   const { state, outcome, finished, mode, vanishing } = game
+
+  useEffect(() => {
+    if (!finished) return
+    gameAudio.play(mode === 'solo' && outcome.winner === AI ? 'ttt-lose' : 'ttt-win')
+  }, [finished, mode, outcome.winner])
 
   return (
     <GameShell
@@ -38,6 +44,7 @@ export function LocalBoardScreen({ onExit }: Props) {
               icon="users"
               onSelect={game.changeMode}
             />
+            <MuteButton className="ttt-btn--sm" />
             <button className="gj-btn ttt-btn--sm" onClick={onExit}>
               나가기
             </button>
@@ -59,6 +66,9 @@ export function LocalBoardScreen({ onExit }: Props) {
         vanishing={finished ? null : vanishing}
         disabled={finished}
         onPlace={game.place}
+        turn={state.turn}
+        xLabel={mode === 'solo' ? '나' : '플레이어 1'}
+        oLabel={mode === 'solo' ? 'AI' : '플레이어 2'}
       />
 
       <ResultOverlay

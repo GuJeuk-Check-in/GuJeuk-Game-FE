@@ -15,3 +15,12 @@ export type { ResultOverlayProps } from './ResultOverlay'
 
 export { Icon } from './Icon'
 export type { IconName, IconProps } from './Icon'
+
+export { MuteButton } from './MuteButton'
+export type { MuteButtonProps } from './MuteButton'
+
+export { gameAudio } from './gameAudio'
+export type { GameSound, MusicTheme } from './gameAudio'
+
+export { GameMusic } from './GameMusic'
+export type { GameMusicProps } from './GameMusic'

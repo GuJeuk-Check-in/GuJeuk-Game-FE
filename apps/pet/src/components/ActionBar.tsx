@@ -104,6 +104,10 @@ export function ActionBar({
         <button
           type="button"
           className="gj-btn pt-actions__btn pt-actions__btn--decor"
+          // 위 돌봄 버튼들과 같은 이유로 통과시킨다. 튜토리얼이 꾸미기를 시키지는
+          // 않지만, 막아 둘 이유도 없다 — 오버레이가 덮으면 눌러도 아무 일이
+          // 일어나지 않아서 사용자는 버튼이 고장 난 줄 안다.
+          data-pt-tutorial-pass=""
           onClick={onDecorate}
         >
           <span className="pt-actions__label">꾸미기</span>
