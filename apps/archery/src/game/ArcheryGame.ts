@@ -415,7 +415,15 @@ export class ArcheryGame {
    */
   setAssist(angleDeg: number | null, power = 0): void {
     this.assist =
-      angleDeg === null ? null : { angle: (angleDeg * Math.PI) / 180, power: clamp(power, 0, 1) }
+      angleDeg === null
+        ? null
+        : {
+            // 각도 범위는 드래그와 같은 규칙으로 붙인다. 여기서 붙이지 않으면
+            // 도우미로만 35도 아래를 쏠 수 있어, 바람을 무시하는 낮은 탄도가
+            // 이 경로로 되살아난다.
+            angle: clamp((angleDeg * Math.PI) / 180, MIN_ANGLE, MAX_ANGLE),
+            power: clamp(power, 0, 1),
+          }
     this.emit()
   }
 
@@ -423,7 +431,8 @@ export class ArcheryGame {
   fireAssist(): boolean {
     const aim = this.assist
     if (!aim || !this.armed || this.arrow !== null) return false
-    if (aim.power <= 0 || aim.angle < 0 || aim.angle > MAX_ANGLE) return false
+    // 각도는 setAssist가 이미 범위 안으로 붙여 뒀다.
+    if (aim.power <= 0) return false
 
     this.armed = false
     this.launch({ angle: aim.angle, power: aim.power, wind: this.wind }, 'me')
@@ -924,8 +933,15 @@ export class ArcheryGame {
     }
 
     // 점수. 과녁 왼쪽에 띄워 화살을 가리지 않는다.
+    //
+    // 링을 벗어난 발은 착탄 높이가 화면 밖일 수 있다. 60도 만개는 y −106,
+    // 70도는 −235인데 착탄 카메라는 과녁 중심 ±105만 비춘다. 그 자리에 그리면
+    // 정작 피드백이 가장 필요한 발에 아무 표시도 안 남는다. 과녁 가장자리로
+    // 당겨 어느 쪽으로 벗어났는지만 남긴다.
+    const missed = hit.score === 0
+    const offset = hit.y - TARGET_Y
     const x = TARGET_X - 62
-    const y = hit.y
+    const y = missed ? TARGET_Y + Math.sign(offset || 1) * (RING_OUTER - 12) : hit.y
     ctx.fillStyle = hit.score === 0 ? 'rgba(232, 71, 75, 0.92)' : 'rgba(12, 16, 24, 0.86)'
     roundedRect(ctx, x - 30, y - 19, 60, 38, 10)
     ctx.fill()
@@ -933,11 +949,13 @@ export class ArcheryGame {
     ctx.lineWidth = 2
     ctx.stroke()
 
-    ctx.fillStyle = hit.score === 0 ? '#fff' : hit.score === 10 ? '#f5cf3d' : '#e9edf5'
-    ctx.font = '800 25px system-ui, sans-serif'
+    ctx.fillStyle = missed ? '#fff' : hit.score === 10 ? '#f5cf3d' : '#e9edf5'
+    // 빗나간 발에는 점수 대신 어느 쪽으로 벗어났는지를 적는다. 0점이라는 것보다
+    // 다음 발을 어떻게 고쳐야 하는지가 쓸모 있다.
+    ctx.font = missed ? '800 19px system-ui, sans-serif' : '800 25px system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(hit.score === 0 ? 'MISS' : String(hit.score), x, y + 1)
+    ctx.fillText(missed ? (offset < 0 ? '높음' : '낮음') : String(hit.score), x, y + 1)
     ctx.textBaseline = 'alphabetic'
 
     ctx.restore()

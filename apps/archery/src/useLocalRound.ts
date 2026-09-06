@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ArcheryGame, ArcherySnapshot, ShotInput, ShotResult } from './game/ArcheryGame'
 
 export const ARROWS_PER_ROUND = 5
@@ -51,21 +51,29 @@ export function useLocalRound(): LocalRound {
   }, [])
 
   const onShotLanded = useCallback((_input: ShotInput, result: ShotResult) => {
-    setShots((prev) => {
-      const next = [...prev, result.score]
-
-      // 다음 발 준비. 마지막 발이었으면 조준을 잠근다.
-      if (next.length < ARROWS_PER_ROUND) {
-        const nextWind = rollWind()
-        setWind(nextWind)
-        gameRef.current?.setTurn(true, nextWind)
-      } else {
-        gameRef.current?.setTurn(false, 0)
-      }
-
-      return next
-    })
+    setShots((prev) => [...prev, result.score])
   }, [])
+
+  /**
+   * 다음 발 준비.
+   *
+   * 전에는 setShots 업데이터 안에서 난수를 뽑고 게임을 건드렸다. React는 업데이터를
+   * 순수 함수로 보고 다시 부를 수 있어서, 그때마다 바람이 다시 뽑히고 setTurn이
+   * 다시 불렸다. 발 수가 바뀐 뒤에 한 번만 하도록 옮긴다.
+   */
+  useEffect(() => {
+    const game = gameRef.current
+    // 첫 발과 리셋 직후 준비는 attach와 reset이 맡는다.
+    if (!game || shots.length === 0) return
+
+    if (shots.length < ARROWS_PER_ROUND) {
+      const nextWind = rollWind()
+      setWind(nextWind)
+      game.setTurn(true, nextWind)
+    } else {
+      game.setTurn(false, 0)
+    }
+  }, [shots.length])
 
   const reset = useCallback(() => {
     setShots([])
